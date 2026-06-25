@@ -66,11 +66,34 @@ function describeError(error: unknown) {
   };
 }
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function syncFileHash(raw: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return bytesToHex(new Uint8Array(digest)).slice(0, 16);
+}
+
 async function decryptSyncVault(encrypted: EncryptedVault, masterPassword: string, format: "sync" | "legacy") {
   try {
     return await decryptVault(encrypted, masterPassword);
   } catch (error) {
-    addDebugLog("sync", "decrypt failed", { format, ...describeError(error) }, "error");
+    addDebugLog(
+      "sync",
+      "decrypt failed",
+      {
+        format,
+        createdAt: encrypted.createdAt,
+        updatedAt: encrypted.updatedAt,
+        iterations: encrypted.iterations,
+        ciphertextLength: encrypted.ciphertext.length,
+        ...describeError(error),
+      },
+      "error",
+    );
     throw new Error("Не удалось расшифровать файл синхронизации. Проверьте, что на обоих устройствах введён одинаковый мастер-пароль. Также возможно, что файл в облаке повреждён или создан старой несовместимой сборкой.");
   }
 }
@@ -96,14 +119,26 @@ export async function buildCompatibleSyncPayload(vault: VaultState, masterPasswo
 }
 
 export async function readSyncPayload(raw: string, masterPassword: string): Promise<ParsedSyncPayload> {
+  const rawHash = await syncFileHash(raw);
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
+    addDebugLog("sync", "payload parse failed", { rawLength: raw.length, rawHash }, "error");
     throw new Error("Файл синхронизации поврежден или имеет неверный формат.");
   }
 
   if (isSyncPayload(parsed)) {
+    addDebugLog("sync", "payload detected", {
+      format: parsed.format,
+      rawLength: raw.length,
+      rawHash,
+      createdAt: parsed.encryptedVault.createdAt,
+      updatedAt: parsed.encryptedVault.updatedAt,
+      declaredEntries: parsed.entryCount,
+      iterations: parsed.encryptedVault.iterations,
+      ciphertextLength: parsed.encryptedVault.ciphertext.length,
+    });
     const vault = await decryptSyncVault(parsed.encryptedVault, masterPassword, "sync");
     addDebugLog("sync", "read sync payload", {
       format: parsed.format,
@@ -123,6 +158,15 @@ export async function readSyncPayload(raw: string, masterPassword: string): Prom
   }
 
   if (isEncryptedVault(parsed)) {
+    addDebugLog("sync", "payload detected", {
+      format: "legacy",
+      rawLength: raw.length,
+      rawHash,
+      createdAt: parsed.createdAt,
+      updatedAt: parsed.updatedAt,
+      iterations: parsed.iterations,
+      ciphertextLength: parsed.ciphertext.length,
+    });
     const vault = await decryptSyncVault(parsed, masterPassword, "legacy");
     addDebugLog("sync", "read legacy payload", {
       decryptedEntries: vault.entries.length,
