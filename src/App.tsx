@@ -1,4 +1,4 @@
-import { ChangeEvent, ClipboardEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -139,8 +139,9 @@ function EntryIcon({ entry, size = "normal" }: { entry: VaultEntry; size?: "norm
   }, [entry.id, entry.icon, entry.url]);
 
   if (candidates[iconIndex]) {
+    const iconStyle = { "--entry-icon-bg": `url("${candidates[iconIndex].replace(/"/g, '\\"')}")` } as CSSProperties;
     return (
-      <span className={className}>
+      <span className={`${className} has-image`} style={iconStyle}>
         <img
           src={candidates[iconIndex]}
           alt=""
@@ -407,8 +408,25 @@ function FolderStrip({
   entries: VaultEntry[];
   selectedFolder: string;
   onSelect: (id: string) => void;
-  onCreate: () => void;
+  onCreate: (name: string) => void | Promise<void>;
 }) {
+  const [creating, setCreating] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (creating) inputRef.current?.focus();
+  }, [creating]);
+
+  async function submitFolder(event: FormEvent) {
+    event.preventDefault();
+    const normalizedName = folderName.trim();
+    if (!normalizedName) return;
+    await onCreate(normalizedName);
+    setFolderName("");
+    setCreating(false);
+  }
+
   return (
     <div className="folder-strip" aria-label="Папки">
       {folders.map((folder) => {
@@ -424,9 +442,41 @@ function FolderStrip({
           </button>
         );
       })}
-      <button className="folder-add" onClick={onCreate} aria-label="Создать папку" title="Создать папку">
-        <FolderPlus size={17} />
-      </button>
+      {creating ? (
+        <form className="folder-create" onSubmit={submitFolder}>
+          <input
+            ref={inputRef}
+            value={folderName}
+            onChange={(event) => setFolderName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setFolderName("");
+                setCreating(false);
+              }
+            }}
+            placeholder="Новая папка"
+          />
+          <button type="submit" className="folder-add" aria-label="Сохранить папку" title="Сохранить папку">
+            <Check size={17} />
+          </button>
+          <button
+            type="button"
+            className="folder-add"
+            onClick={() => {
+              setFolderName("");
+              setCreating(false);
+            }}
+            aria-label="Отменить"
+            title="Отменить"
+          >
+            <X size={17} />
+          </button>
+        </form>
+      ) : (
+        <button className="folder-add" type="button" onClick={() => setCreating(true)} aria-label="Создать папку" title="Создать папку">
+          <FolderPlus size={17} />
+        </button>
+      )}
     </div>
   );
 }
@@ -1478,9 +1528,8 @@ export default function App() {
             setSelectedFolder(id);
             setSelectedEntry(null);
           }}
-          onCreate={async () => {
-            const name = window.prompt("Название папки");
-            if (!name?.trim()) return;
+          onCreate={async (name) => {
+            if (!name.trim()) return;
             const rootId = vault.folders[0].id;
             const normalizedName = name.trim();
             const duplicate = vault.folders.some(

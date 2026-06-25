@@ -326,6 +326,24 @@ small,
   min-height: 40px;
 }
 
+.folder-add {
+  width: 44px;
+  justify-content: center;
+  padding: 0;
+}
+
+.folder-create {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-create input {
+  width: 160px;
+  min-height: 40px;
+}
+
 .folder-chip {
   justify-content: space-between;
   min-width: 92px;
@@ -432,6 +450,18 @@ small,
   flex: 0 0 auto;
 }
 
+.entry-icon-preview.has-image::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--entry-icon-bg);
+  background-position: center;
+  background-size: cover;
+  filter: blur(10px) saturate(1.35);
+  opacity: 0.72;
+  transform: scale(1.55);
+}
+
 .entry-icon-preview.large {
   width: 52px;
 }
@@ -444,8 +474,10 @@ small,
 .entry-icon-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  background: #000000;
+  box-sizing: border-box;
+  object-fit: contain;
+  background: transparent;
+  padding: 7px;
   z-index: 2;
 }
 
