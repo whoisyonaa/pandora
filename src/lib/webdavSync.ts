@@ -38,14 +38,15 @@ function normalizeFilePath(value: string) {
   return path;
 }
 
-function remoteFileUrl(config: WebDavConfig) {
+function remoteFileUrl(config: WebDavConfig, options: { cacheBust?: boolean } = {}) {
   const base = normalizeBaseUrl(config.url);
   const path = normalizeFilePath(config.filePath)
     .split("/")
     .filter(Boolean)
     .map((part) => encodeURIComponent(part))
     .join("/");
-  return `${base}/${path}`;
+  const url = `${base}/${path}`;
+  return options.cacheBust ? `${url}?_pandora_t=${Date.now()}` : url;
 }
 
 function encodeBasicAuth(username: string, password: string) {
@@ -66,17 +67,20 @@ function assertConfig(config: WebDavConfig) {
 function stringifyData(data: unknown) {
   if (typeof data === "string") return data;
   if (data === null || data === undefined) return "";
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
   return JSON.stringify(data);
 }
 
 async function request(method: "GET" | "PUT", config: WebDavConfig, data?: string): Promise<WebDavResponse> {
   assertConfig(config);
-  const url = remoteFileUrl(config);
+  const url = remoteFileUrl(config, { cacheBust: method === "GET" });
   const headers = {
     Authorization: encodeBasicAuth(config.username.trim(), config.password),
     Accept: "application/json, text/plain, */*",
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
     Pragma: "no-cache",
+    Expires: "0",
     "Content-Type": "application/json; charset=utf-8",
   };
 
