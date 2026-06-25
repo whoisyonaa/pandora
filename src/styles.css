@@ -902,3 +902,382 @@ small,
     display: none;
   }
 }
+
+/* Pandora Mono Cyber Vault redesign layer */
+:root {
+  --bg: #050505;
+  --bg-secondary: #080808;
+  --panel: #101010;
+  --panel-2: #151515;
+  --panel-3: #1b1b1b;
+  --surface-hover: #202020;
+  --surface-active: #262626;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.42);
+  --text: #f2f2f2;
+  --muted: #a4a4a4;
+  --muted-2: #686868;
+  --accent: #ffffff;
+  --danger: #d77878;
+  --success: #b8d8ce;
+  --warning: #cbbd91;
+  --sync: #9fb0bc;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.62);
+  --font-ui: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-ui);
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.045), transparent 34rem),
+    linear-gradient(180deg, #090909 0%, var(--bg) 42%, #030303 100%);
+}
+
+body::before {
+  content: "AES-256-GCM  KEY ID: 7D2A  SYNC BLOCK 0042  SHA-256  DEVICE: 03  01001101";
+  position: fixed;
+  inset: auto 16px 16px auto;
+  z-index: -1;
+  max-width: min(520px, calc(100vw - 32px));
+  color: rgba(255, 255, 255, 0.045);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.8;
+  text-align: right;
+  pointer-events: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
+}
+
+button {
+  min-height: 44px;
+  border-color: var(--border-subtle);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  font-weight: 650;
+}
+
+button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+button.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+button.danger {
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+
+input,
+select,
+textarea {
+  border-color: var(--border-subtle);
+  border-radius: 8px;
+  background: #080808;
+  font-size: 14px;
+}
+
+label,
+.login-title span,
+.brand span,
+.sheet-head span,
+.vault-summary span,
+.status,
+.note-meta,
+.debug-console pre,
+.device-code-box strong {
+  font-family: var(--font-mono);
+}
+
+label,
+.login-title span,
+.brand span,
+.sheet-head span,
+.vault-summary span {
+  letter-spacing: 0.08em;
+}
+
+.cipher-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.05) 1px, transparent 1.5px);
+  background-size: 56px 56px, 56px 56px, 112px 112px;
+  opacity: 0.75;
+  animation: vaultGridDrift 18s linear infinite;
+}
+
+.app-shell {
+  padding: 24px;
+}
+
+.app-frame {
+  width: min(1120px, 100%);
+  border-color: var(--border-subtle);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 180px),
+    rgba(12, 12, 12, 0.94);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.topbar {
+  min-height: 84px;
+  border-bottom-color: var(--border-subtle);
+  padding: 18px 20px;
+}
+
+.brand img,
+.login-logo,
+.entry-icon-preview,
+.splash-mark {
+  border-radius: 10px;
+  border-color: var(--border-subtle);
+  background: #080808;
+}
+
+.brand strong {
+  font-size: 20px;
+  font-weight: 760;
+}
+
+.vault-summary {
+  display: grid;
+  grid-template-columns: 0.7fr 0.7fr 1.5fr 1fr;
+  gap: 1px;
+  margin: 0 20px;
+  border: 1px solid var(--border-subtle);
+  background: var(--border-subtle);
+}
+
+.vault-summary div {
+  min-width: 0;
+  padding: 14px 16px;
+  background: rgba(10, 10, 10, 0.92);
+}
+
+.vault-summary span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+
+.vault-summary strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-strip {
+  padding: 16px 20px 10px;
+}
+
+.folder-chip,
+.folder-add,
+.folder-create input {
+  border-radius: 999px;
+  background: #0a0a0a;
+}
+
+.folder-chip.active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.search-row {
+  padding: 10px 20px 18px;
+  grid-template-columns: minmax(0, 1fr) 160px auto;
+}
+
+.search-box,
+.password-line {
+  border-color: var(--border-subtle);
+  border-radius: 10px;
+  background: #080808;
+}
+
+.notes-list {
+  padding: 0 20px 24px;
+}
+
+.note-row {
+  min-height: 78px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  border: 1px solid transparent;
+  border-top-color: var(--border-subtle);
+  border-radius: 10px;
+  padding: 13px 12px;
+}
+
+.note-row:last-child {
+  border-bottom-color: var(--border-subtle);
+}
+
+.note-row.active,
+.note-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--border);
+}
+
+.note-copy strong {
+  font-size: 15px;
+  font-weight: 740;
+}
+
+.note-copy small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.note-meta {
+  color: var(--muted-2);
+}
+
+.entry-icon-preview {
+  background: #0c0c0c;
+}
+
+.entry-icon-preview.has-image {
+  background: color-mix(in srgb, var(--panel) 82%, var(--text) 9%);
+}
+
+.editor-sheet,
+.settings-drawer,
+.login-panel,
+.unsupported-screen section {
+  border-color: var(--border);
+  border-radius: 18px;
+  background: rgba(14, 14, 14, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.editor-sheet,
+.settings-drawer {
+  top: 24px;
+  right: 24px;
+  bottom: 24px;
+}
+
+.sheet-head,
+.sheet-actions {
+  border-color: var(--border-subtle);
+}
+
+.form-grid,
+.settings-section {
+  padding: 18px;
+}
+
+.generator-box,
+.sync-status,
+.device-code-box,
+.sync-guide,
+.advanced-sync,
+.debug-console {
+  border-color: var(--border-subtle);
+  border-radius: 12px;
+  background: #090909;
+}
+
+.switch,
+.mini-toggles label {
+  min-height: 44px;
+  border-color: var(--border-subtle);
+  border-radius: 10px;
+  background: #0b0b0b;
+}
+
+.login-panel {
+  width: min(440px, 100%);
+  padding: 30px;
+}
+
+.splash-screen p,
+.status {
+  letter-spacing: 0.12em;
+}
+
+.empty-state {
+  min-height: 430px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--muted);
+}
+
+.host-list button {
+  border-radius: 10px;
+}
+
+@keyframes vaultGridDrift {
+  from {
+    background-position: 0 0, 0 0, 0 0;
+  }
+  to {
+    background-position: 56px 56px, 56px 56px, 112px 112px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cipher-grid {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 0;
+  }
+
+  .app-frame {
+    border-radius: 0;
+  }
+
+  .topbar {
+    min-height: 72px;
+    padding: 14px;
+  }
+
+  .vault-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0 14px;
+  }
+
+  .vault-summary div {
+    padding: 12px;
+  }
+
+  .search-row,
+  .folder-strip,
+  .notes-list {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .note-row {
+    min-height: 74px;
+  }
+
+  .editor-sheet,
+  .settings-drawer {
+    inset: auto 0 0 0;
+    border-radius: 18px 18px 0 0;
+  }
+}

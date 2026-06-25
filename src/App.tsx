@@ -1685,6 +1685,25 @@ export default function App() {
           </div>
         </header>
 
+        <section className="vault-summary" aria-label="Состояние хранилища">
+          <div>
+            <span>ENTRIES</span>
+            <strong>{vault.entries.length}</strong>
+          </div>
+          <div>
+            <span>FOLDERS</span>
+            <strong>{Math.max(vault.folders.length - 1, 0)}</strong>
+          </div>
+          <div>
+            <span>ACTIVE FOLDER</span>
+            <strong>{vault.folders.find((folder) => folder.id === selectedFolder)?.name || "Все"}</strong>
+          </div>
+          <div>
+            <span>CRYPTO</span>
+            <strong>AES-256-GCM</strong>
+          </div>
+        </section>
+
         <FolderStrip
           folders={vault.folders}
           entries={vault.entries}
