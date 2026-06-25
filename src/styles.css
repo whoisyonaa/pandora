@@ -369,6 +369,11 @@ small,
   color: var(--bg);
 }
 
+.folder-chip:focus-visible,
+.folder-chip:hover {
+  border-color: var(--text);
+}
+
 .search-row {
   display: grid;
   grid-template-columns: 1fr 150px auto;
@@ -426,6 +431,11 @@ small,
   text-align: left;
   background: transparent;
   padding: 12px 4px;
+  cursor: grab;
+}
+
+.note-row:active {
+  cursor: grabbing;
 }
 
 .note-row:last-child {
@@ -443,23 +453,15 @@ small,
   border: 1px solid var(--border);
   display: grid;
   place-items: center;
-  background: #000000;
+  background: color-mix(in srgb, var(--panel) 92%, var(--text) 5%);
   font-weight: 800;
   overflow: hidden;
   position: relative;
   flex: 0 0 auto;
 }
 
-.entry-icon-preview.has-image::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: var(--entry-icon-bg);
-  background-position: center;
-  background-size: cover;
-  filter: blur(10px) saturate(1.35);
-  opacity: 0.72;
-  transform: scale(1.55);
+.entry-icon-preview.has-image {
+  background: color-mix(in srgb, var(--panel) 88%, var(--text) 7%);
 }
 
 .entry-icon-preview.large {

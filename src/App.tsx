@@ -1,4 +1,6 @@
-import { ChangeEvent, ClipboardEvent, CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { AndroidBiometryStrength, BiometricAuth } from "@aparajita/capacitor-biometric-auth";
 import {
   Check,
   Copy,
@@ -6,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FileUp,
+  Fingerprint,
   FolderPlus,
   KeyRound,
   Lock,
@@ -38,6 +41,7 @@ import { addDebugLog, clearDebugLogs, formatDebugLogs, readDebugLogs } from "./l
 const minMasterPasswordLength = 4;
 const optionalLockKey = "pandora.skipLock.v1";
 const rememberedPasswordKey = "pandora.rememberedMasterPassword.v1";
+const biometricUnlockKey = "pandora.biometricUnlock.v1";
 
 type LocalSyncSession = {
   code: string;
@@ -139,9 +143,8 @@ function EntryIcon({ entry, size = "normal" }: { entry: VaultEntry; size?: "norm
   }, [entry.id, entry.icon, entry.url]);
 
   if (candidates[iconIndex]) {
-    const iconStyle = { "--entry-icon-bg": `url("${candidates[iconIndex].replace(/"/g, '\\"')}")` } as CSSProperties;
     return (
-      <span className={`${className} has-image`} style={iconStyle}>
+      <span className={`${className} has-image`}>
         <img
           src={candidates[iconIndex]}
           alt=""
@@ -333,6 +336,23 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"unlock" | "create">(hasStoredVault() ? "unlock" : "create");
   const [error, setError] = useState("");
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "unlock" || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
+      setBiometricAvailable(false);
+      return;
+    }
+    if (localStorage.getItem(biometricUnlockKey) !== "1" || !localStorage.getItem(rememberedPasswordKey)) {
+      setBiometricAvailable(false);
+      return;
+    }
+
+    BiometricAuth.checkBiometry()
+      .then((info) => setBiometricAvailable(Boolean(info.strongBiometryIsAvailable)))
+      .catch(() => setBiometricAvailable(false));
+  }, [mode]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -354,6 +374,34 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
       }
     } catch {
       setError("Не удалось открыть Pandora. Проверьте пароль.");
+    }
+  }
+
+  async function unlockWithBiometry() {
+    const rememberedPassword = localStorage.getItem(rememberedPasswordKey);
+    if (!rememberedPassword) {
+      setError("Включите вход по отпечатку в настройках Pandora.");
+      setBiometricAvailable(false);
+      return;
+    }
+
+    setError("");
+    setBiometricBusy(true);
+    try {
+      await BiometricAuth.authenticate({
+        reason: "Подтвердите вход в Pandora",
+        androidTitle: "Pandora",
+        androidSubtitle: "Вход по отпечатку пальца",
+        cancelTitle: "Отмена",
+        allowDeviceCredential: false,
+        androidBiometryStrength: AndroidBiometryStrength.strong,
+      });
+      const vault = normalizeVault(await unlockVault(rememberedPassword));
+      onUnlock(vault, rememberedPassword);
+    } catch {
+      setError("Не удалось войти по отпечатку. Введите мастер-пароль.");
+    } finally {
+      setBiometricBusy(false);
     }
   }
 
@@ -385,6 +433,12 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
             <Lock size={16} />
             {mode === "create" ? "Создать" : "Войти"}
           </button>
+          {biometricAvailable && mode === "unlock" && (
+            <button type="button" className="wide" onClick={unlockWithBiometry} disabled={biometricBusy}>
+              <Fingerprint size={16} />
+              {biometricBusy ? "Проверка..." : "Войти по отпечатку"}
+            </button>
+          )}
         </form>
 
         {hasStoredVault() && (
@@ -403,12 +457,14 @@ function FolderStrip({
   selectedFolder,
   onSelect,
   onCreate,
+  onDropEntry,
 }: {
   folders: VaultFolder[];
   entries: VaultEntry[];
   selectedFolder: string;
   onSelect: (id: string) => void;
   onCreate: (name: string) => void | Promise<void>;
+  onDropEntry: (entryId: string, folderId: string) => void | Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -436,6 +492,12 @@ function FolderStrip({
             key={folder.id}
             className={folder.id === selectedFolder ? "folder-chip active" : "folder-chip"}
             onClick={() => onSelect(folder.id)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const entryId = event.dataTransfer.getData("application/x-pandora-entry");
+              if (entryId) onDropEntry(entryId, folder.id);
+            }}
           >
             <span>{folder.name}</span>
             <small>{entries.filter((entry) => ids.has(entry.folderId)).length}</small>
@@ -486,11 +548,13 @@ function EntryList({
   selectedId,
   onSelect,
   onCreate,
+  onDragStart,
 }: {
   entries: VaultEntry[];
   selectedId: string | null;
   onSelect: (entry: VaultEntry) => void;
   onCreate: () => void;
+  onDragStart: (entryId: string) => void;
 }) {
   if (entries.length === 0) {
     return (
@@ -513,6 +577,13 @@ function EntryList({
           key={entry.id}
           className={entry.id === selectedId ? "note-row active" : "note-row"}
           onClick={() => onSelect(entry)}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("application/x-pandora-entry", entry.id);
+            event.dataTransfer.setData("text/plain", entry.id);
+            onDragStart(entry.id);
+          }}
         >
           <EntryIcon entry={entry} />
           <span className="note-copy">
@@ -756,7 +827,9 @@ function SettingsPanel({
   vault,
   masterPassword,
   skipLock,
+  biometricUnlock,
   onSkipLockChange,
+  onBiometricUnlockChange,
   onClose,
   onVaultChange,
   onImportVault,
@@ -765,7 +838,9 @@ function SettingsPanel({
   vault: VaultState;
   masterPassword: string;
   skipLock: boolean;
+  biometricUnlock: boolean;
   onSkipLockChange: (enabled: boolean) => void;
+  onBiometricUnlockChange: (enabled: boolean) => void;
   onClose: () => void;
   onVaultChange: (vault: VaultState, message?: string) => void | Promise<void>;
   onImportVault: (vault: VaultState, raw: string) => void | Promise<void>;
@@ -1147,6 +1222,12 @@ function SettingsPanel({
           <input type="checkbox" checked={skipLock} onChange={(event) => onSkipLockChange(event.target.checked)} />
           Не спрашивать пароль при запуске на этом устройстве
         </label>
+        {Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android" && (
+          <label className="switch">
+            <input type="checkbox" checked={biometricUnlock} onChange={(event) => onBiometricUnlockChange(event.target.checked)} />
+            Вход по отпечатку пальца на этом устройстве
+          </label>
+        )}
         <label>
           Автоблокировка
           <select
@@ -1403,6 +1484,7 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [skipLock, setSkipLock] = useState(() => localStorage.getItem(optionalLockKey) === "1");
+  const [biometricUnlock, setBiometricUnlock] = useState(() => localStorage.getItem(biometricUnlockKey) === "1");
   const [manualLock, setManualLock] = useState(false);
 
   useEffect(() => {
@@ -1415,7 +1497,7 @@ export default function App() {
   }, [vault?.settings.theme]);
 
   useEffect(() => {
-    if (booting || vault || manualLock || !skipLock) return;
+    if (booting || vault || manualLock || !skipLock || biometricUnlock) return;
     const rememberedPassword = localStorage.getItem(rememberedPasswordKey);
     if (!rememberedPassword || !hasStoredVault()) return;
 
@@ -1426,7 +1508,7 @@ export default function App() {
         localStorage.removeItem(rememberedPasswordKey);
         setSkipLock(false);
       });
-  }, [booting, manualLock, skipLock, vault]);
+  }, [biometricUnlock, booting, manualLock, skipLock, vault]);
 
   useEffect(() => {
     if (!vault || !masterPassword) return;
@@ -1447,7 +1529,7 @@ export default function App() {
 
   function unlock(unlocked: VaultState, password: string) {
     const cleanVault = normalizeVault(unlocked);
-    if (skipLock) {
+    if (skipLock || biometricUnlock) {
       localStorage.setItem(rememberedPasswordKey, password);
     }
     setManualLock(false);
@@ -1480,6 +1562,21 @@ export default function App() {
   function createEntry() {
     if (!vault) return;
     setSelectedEntry(newEntry(selectedFolder || vault.folders[0].id));
+  }
+
+  function moveEntryToFolder(entryId: string, folderId: string) {
+    if (!vault) return;
+    const entry = vault.entries.find((item) => item.id === entryId);
+    if (!entry || entry.folderId === folderId) return;
+    const nextEntry = { ...entry, folderId, updatedAt: now() };
+    const nextVault = {
+      ...vault,
+      entries: vault.entries.map((item) => (item.id === entryId ? nextEntry : item)),
+    };
+    if (selectedEntry?.id === entryId) {
+      setSelectedEntry(nextEntry);
+    }
+    persist(nextVault, "Запись перемещена");
   }
 
   return (
@@ -1528,6 +1625,7 @@ export default function App() {
             setSelectedFolder(id);
             setSelectedEntry(null);
           }}
+          onDropEntry={moveEntryToFolder}
           onCreate={async (name) => {
             if (!name.trim()) return;
             const rootId = vault.folders[0].id;
@@ -1566,7 +1664,13 @@ export default function App() {
           </button>
         </section>
 
-        <EntryList entries={filteredEntries} selectedId={selectedEntry?.id ?? null} onSelect={setSelectedEntry} onCreate={createEntry} />
+        <EntryList
+          entries={filteredEntries}
+          selectedId={selectedEntry?.id ?? null}
+          onSelect={setSelectedEntry}
+          onCreate={createEntry}
+          onDragStart={() => setSelectedEntry(null)}
+        />
       </section>
 
       {selectedEntry && (
@@ -1599,12 +1703,26 @@ export default function App() {
             vault={vault}
             masterPassword={masterPassword}
             skipLock={skipLock}
+            biometricUnlock={biometricUnlock}
             onSkipLockChange={(enabled) => {
               setSkipLock(enabled);
               localStorage.setItem(optionalLockKey, enabled ? "1" : "0");
               if (enabled) {
+                setBiometricUnlock(false);
+                localStorage.removeItem(biometricUnlockKey);
                 localStorage.setItem(rememberedPasswordKey, masterPassword);
               } else {
+                if (!biometricUnlock) localStorage.removeItem(rememberedPasswordKey);
+              }
+            }}
+            onBiometricUnlockChange={(enabled) => {
+              setBiometricUnlock(enabled);
+              localStorage.setItem(biometricUnlockKey, enabled ? "1" : "0");
+              if (enabled) {
+                setSkipLock(false);
+                localStorage.setItem(optionalLockKey, "0");
+                localStorage.setItem(rememberedPasswordKey, masterPassword);
+              } else if (!skipLock) {
                 localStorage.removeItem(rememberedPasswordKey);
               }
             }}
@@ -1633,7 +1751,9 @@ export default function App() {
               destroyVault();
               localStorage.removeItem(optionalLockKey);
               localStorage.removeItem(rememberedPasswordKey);
+              localStorage.removeItem(biometricUnlockKey);
               setSkipLock(false);
+              setBiometricUnlock(false);
               setVault(null);
               setMasterPassword("");
               setSelectedEntry(null);
