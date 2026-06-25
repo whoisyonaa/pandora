@@ -58,4 +58,50 @@ describe("sync engine", () => {
     expect(result.totalEntries).toBe(1);
     expect(result.vault.entries[0].folderId).toBe(local.folders[0].id);
   });
+
+  it("imports remote folders and maps their entries into the imported folder", () => {
+    const local = createEmptyVault();
+    const remote = createEmptyVault();
+    const remoteFolder = {
+      id: "remote-folder",
+      name: "Work",
+      parentId: remote.folders[0].id,
+      createdAt: new Date().toISOString(),
+    };
+    remote.folders.push(remoteFolder);
+    remote.entries.push(entry({ id: "remote-entry", title: "Remote", folderId: remoteFolder.id }));
+
+    const result = mergeSyncedVaults(local, remote);
+    const importedFolder = result.vault.folders.find((folder) => folder.name === "Work");
+
+    expect(importedFolder).toBeDefined();
+    expect(importedFolder?.parentId).toBe(local.folders[0].id);
+    expect(result.vault.entries.find((item) => item.id === "remote-entry")?.folderId).toBe(importedFolder?.id);
+  });
+
+  it("reuses matching local folders by name instead of duplicating them", () => {
+    const local = createEmptyVault();
+    const remote = createEmptyVault();
+    const localFolder = {
+      id: "local-work",
+      name: "Work",
+      parentId: local.folders[0].id,
+      createdAt: new Date().toISOString(),
+    };
+    const remoteFolder = {
+      id: "remote-work",
+      name: "Work",
+      parentId: remote.folders[0].id,
+      createdAt: new Date().toISOString(),
+    };
+    local.folders.push(localFolder);
+    remote.folders.push(remoteFolder);
+    remote.entries.push(entry({ id: "remote-entry", title: "Remote", folderId: remoteFolder.id }));
+
+    const result = mergeSyncedVaults(local, remote);
+    const workFolders = result.vault.folders.filter((folder) => folder.name === "Work");
+
+    expect(workFolders).toHaveLength(1);
+    expect(result.vault.entries.find((item) => item.id === "remote-entry")?.folderId).toBe(localFolder.id);
+  });
 });

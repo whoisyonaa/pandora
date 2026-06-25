@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -92,7 +92,8 @@ function faviconFromUrl(value: string) {
   if (!trimmed) return "";
   try {
     const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    return `${url.origin}/favicon.ico`;
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return "";
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`;
   } catch {
     return "";
   }
@@ -114,9 +115,10 @@ function siteIconCandidates(entry: VaultEntry) {
     if (trimmed) {
       const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
       candidates.push(
+        `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`,
+        `https://icons.duckduckgo.com/ip3/${url.hostname}.ico`,
         `${url.origin}/favicon.ico`,
         `${url.origin}/apple-touch-icon.png`,
-        `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=64`,
       );
     }
   } catch {
@@ -490,6 +492,7 @@ function EntryEditor({
   const [draft, setDraft] = useState(entry);
   const [visible, setVisible] = useState(false);
   const [showGenerator, setShowGenerator] = useState(!entry.password);
+  const iconFileInputRef = useRef<HTMLInputElement | null>(null);
   const [options, setOptions] = useState<PasswordOptions>({
     length: 18,
     uppercase: true,
@@ -511,6 +514,45 @@ function EntryEditor({
   function applySiteIcon() {
     const icon = faviconFromUrl(draft.url);
     if (icon) patch("icon", icon);
+  }
+
+  function readIconFile(file?: File | null) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        patch("icon", reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function applyIconText(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      patch("icon", "");
+      return;
+    }
+    patch("icon", isImageIcon(trimmed) ? trimmed : faviconFromUrl(trimmed) || trimmed);
+  }
+
+  function handleIconPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"));
+    if (imageItem) {
+      event.preventDefault();
+      readIconFile(imageItem.getAsFile());
+      return;
+    }
+
+    const text = event.clipboardData.getData("text");
+    if (text.trim()) {
+      event.preventDefault();
+      applyIconText(text);
+    }
+  }
+
+  function saveDraft() {
+    onSave({ ...draft, icon: draft.icon || faviconFromUrl(draft.url) });
   }
 
   return (
@@ -558,17 +600,33 @@ function EntryEditor({
         </label>
         <label className="span-2">
           Иконка записи
-          <div className="icon-line">
+          <div className="icon-line" onPaste={handleIconPaste}>
             <input
               value={draft.icon || ""}
               onChange={(event) => patch("icon", event.target.value)}
+              onBlur={(event) => applyIconText(event.target.value)}
               placeholder="Авто с сайта, ссылка на картинку или 1-2 буквы"
             />
             <button type="button" onClick={applySiteIcon} disabled={!draft.url.trim()}>
               <Shuffle size={16} />
               С сайта
             </button>
+            <button type="button" onClick={() => iconFileInputRef.current?.click()}>
+              <Upload size={16} />
+              {"\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c"}
+            </button>
+            <input
+              ref={iconFileInputRef}
+              className="hidden-input"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                readIconFile(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
           </div>
+          <small className="field-hint">{"\u0414\u043e\u043c\u0435\u043d, URL \u043a\u0430\u0440\u0442\u0438\u043d\u043a\u0438, \u0444\u0430\u0439\u043b \u0438\u043b\u0438 Ctrl+V."}</small>
         </label>
         <label className="span-2">
           Пароль
@@ -635,7 +693,7 @@ function EntryEditor({
           <Trash2 size={16} />
           Удалить
         </button>
-        <button className="primary" onClick={() => onSave({ ...draft, icon: draft.icon || faviconFromUrl(draft.url) })}>
+        <button className="primary" onClick={saveDraft}>
           <Save size={16} />
           Сохранить
         </button>
@@ -1420,16 +1478,25 @@ export default function App() {
             setSelectedFolder(id);
             setSelectedEntry(null);
           }}
-          onCreate={() => {
+          onCreate={async () => {
             const name = window.prompt("Название папки");
             if (!name?.trim()) return;
-            persist(
-              {
-                ...vault,
-                folders: [...vault.folders, { id: crypto.randomUUID(), name: name.trim(), parentId: vault.folders[0].id, createdAt: now() }],
-              },
+            const rootId = vault.folders[0].id;
+            const normalizedName = name.trim();
+            const duplicate = vault.folders.some(
+              (folder) => folder.parentId === rootId && folder.name.trim().toLowerCase() === normalizedName.toLowerCase(),
+            );
+            if (duplicate) {
+              window.alert("\u041f\u0430\u043f\u043a\u0430 \u0441 \u0442\u0430\u043a\u0438\u043c \u0438\u043c\u0435\u043d\u0435\u043c \u0443\u0436\u0435 \u0435\u0441\u0442\u044c");
+              return;
+            }
+            const folder = { id: crypto.randomUUID(), name: normalizedName, parentId: rootId, createdAt: now() };
+            await persist(
+              { ...vault, folders: [...vault.folders, folder] },
               "Папка создана",
             );
+            setSelectedFolder(folder.id);
+            setSelectedEntry(null);
           }}
         />
 

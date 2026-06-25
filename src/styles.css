@@ -370,8 +370,17 @@ small,
 
 .icon-line {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: none;
 }
 
 .search-box input,
@@ -823,6 +832,14 @@ small,
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .icon-line {
+    grid-template-columns: 1fr;
+  }
+
+  .icon-line button {
+    justify-content: center;
   }
 
   .theme-corner {
