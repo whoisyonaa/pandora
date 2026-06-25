@@ -33,6 +33,7 @@ import { generatePassword, type PasswordOptions } from "./lib/password";
 import { importGooglePasswordsCsv } from "./lib/csvImport";
 import { downloadWebDavVault, testWebDavConnection, uploadWebDavVault, type WebDavConfig } from "./lib/webdavSync";
 import { buildCompatibleSyncPayload, mergeSyncedVaults, readSyncPayload } from "./lib/syncEngine";
+import { addDebugLog, clearDebugLogs, formatDebugLogs, readDebugLogs } from "./lib/debugLog";
 
 const minMasterPasswordLength = 4;
 const optionalLockKey = "pandora.skipLock.v1";
@@ -669,6 +670,7 @@ function SettingsPanel({
   const [remoteAddress, setRemoteAddress] = useState("");
   const [remoteCode, setRemoteCode] = useState("");
   const [incomingReady, setIncomingReady] = useState(false);
+  const [debugLogVersion, setDebugLogVersion] = useState(0);
   const [webdav, setWebdav] = useState<WebDavConfig>(
     vault.settings.sync.webdav ?? {
       url: "https://app.koofr.net/dav/Koofr",
@@ -678,8 +680,22 @@ function SettingsPanel({
     },
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const debugLogs = useMemo(() => readDebugLogs(), [debugLogVersion]);
+  const debugPreview = debugLogs
+    .slice(-8)
+    .map((entry) => `${new Date(entry.at).toLocaleTimeString("ru-RU")} ${entry.level.toUpperCase()} ${entry.scope}: ${entry.message}`)
+    .join("\n");
 
   useEffect(() => window.pandoraSync?.onReceived(() => setIncomingReady(true)), []);
+
+  function refreshDebugLog() {
+    setDebugLogVersion((current) => current + 1);
+  }
+
+  function logDebug(scope: string, message: string, details?: Record<string, unknown>, level: "info" | "warn" | "error" = "info") {
+    addDebugLog(scope, message, details, level);
+    refreshDebugLog();
+  }
 
   function setWebdavField<K extends keyof WebDavConfig>(key: K, value: WebDavConfig[K]) {
     setWebdav((current) => ({ ...current, [key]: value }));
@@ -730,15 +746,37 @@ function SettingsPanel({
     downloadText(`pandora-${new Date().toISOString().slice(0, 10)}.pandora`, raw);
   }
 
-  async function withSyncBusy(action: () => Promise<void>) {
+  async function copyDebugLog() {
+    await navigator.clipboard.writeText(formatDebugLogs());
+    logDebug("debug", "log copied", { entries: debugLogs.length });
+  }
+
+  function downloadDebugLog() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadText(`pandora-debug-${stamp}.log`, formatDebugLogs());
+    logDebug("debug", "log downloaded", { entries: debugLogs.length });
+  }
+
+  function resetDebugLog() {
+    clearDebugLogs();
+    refreshDebugLog();
+    addDebugLog("debug", "log cleared");
+    refreshDebugLog();
+  }
+
+  async function withSyncBusy(action: () => Promise<void>, label = "sync") {
     setSyncBusy(true);
     setSyncMessage("");
+    logDebug("ui", `${label} start`, { localEntries: vault.entries.length, folders: vault.folders.length });
     try {
       await action();
+      logDebug("ui", `${label} success`, { localEntries: vault.entries.length });
     } catch (error) {
+      logDebug("ui", `${label} failed`, { error: error instanceof Error ? error.message : String(error) }, "error");
       setSyncMessage(error instanceof Error ? error.message : "Ошибка синхронизации");
     } finally {
       setSyncBusy(false);
+      refreshDebugLog();
     }
   }
 
@@ -1212,6 +1250,29 @@ function SettingsPanel({
         </button>
       </section>
 
+      <section className="settings-section">
+        <h3>Диагностика</h3>
+        <p className="muted">Журнал не содержит мастер-пароль и содержимое хранилища. После ошибки синхронизации скачайте или скопируйте его и отправьте в чат.</p>
+        <div className="debug-console">
+          <span>Записей в журнале: {debugLogs.length}</span>
+          <pre>{debugPreview || "Пока нет записей. Запустите проверку или синхронизацию."}</pre>
+        </div>
+        <div className="button-row">
+          <button onClick={copyDebugLog} disabled={debugLogs.length === 0}>
+            <Copy size={16} />
+            Скопировать
+          </button>
+          <button onClick={downloadDebugLog} disabled={debugLogs.length === 0}>
+            <Download size={16} />
+            Скачать лог
+          </button>
+          <button onClick={resetDebugLog} disabled={debugLogs.length === 0}>
+            <Trash2 size={16} />
+            Очистить
+          </button>
+        </div>
+      </section>
+
       <section className="settings-section danger-zone">
         <h3>Опасная зона</h3>
         <button className="danger" onClick={onReset}>
@@ -1436,8 +1497,14 @@ export default function App() {
             onImportVault={async (nextVault) => {
               const cleanVault = normalizeVault(nextVault);
               const visibleFolderId = cleanVault.entries[0]?.folderId ?? cleanVault.folders[0]?.id ?? "";
+              addDebugLog("import", "apply imported vault", {
+                entries: cleanVault.entries.length,
+                folders: cleanVault.folders.length,
+                selectedFolder: visibleFolderId,
+              });
               setVault(cleanVault);
               await saveVault(cleanVault, masterPassword);
+              addDebugLog("import", "imported vault saved", { entries: cleanVault.entries.length });
               setSelectedFolder(visibleFolderId);
               setSelectedEntry(null);
               setQuery("");

@@ -1,5 +1,6 @@
 import type { EncryptedVault, VaultEntry, VaultFolder, VaultState } from "../types/vault";
 import { decryptVault, encryptVault } from "./cryptoVault";
+import { addDebugLog } from "./debugLog";
 
 const deviceIdKey = "pandora.syncDeviceId.v1";
 
@@ -63,10 +64,12 @@ export async function buildSyncPayload(vault: VaultState, masterPassword: string
     folderCount: vault.folders.length,
     encryptedVault,
   };
+  addDebugLog("sync", "build sync payload", { entries: vault.entries.length, folders: vault.folders.length, legacy: false });
   return JSON.stringify(payload);
 }
 
 export async function buildCompatibleSyncPayload(vault: VaultState, masterPassword: string) {
+  addDebugLog("sync", "build compatible payload", { entries: vault.entries.length, folders: vault.folders.length, legacy: true });
   return JSON.stringify(await encryptVault(vault, masterPassword));
 }
 
@@ -80,6 +83,13 @@ export async function readSyncPayload(raw: string, masterPassword: string): Prom
 
   if (isSyncPayload(parsed)) {
     const vault = await decryptVault(parsed.encryptedVault, masterPassword);
+    addDebugLog("sync", "read sync payload", {
+      format: parsed.format,
+      declaredEntries: parsed.entryCount,
+      decryptedEntries: vault.entries.length,
+      folders: vault.folders.length,
+      exportedAt: parsed.exportedAt,
+    });
     return {
       vault,
       entryCount: parsed.entryCount,
@@ -92,6 +102,11 @@ export async function readSyncPayload(raw: string, masterPassword: string): Prom
 
   if (isEncryptedVault(parsed)) {
     const vault = await decryptVault(parsed, masterPassword);
+    addDebugLog("sync", "read legacy payload", {
+      decryptedEntries: vault.entries.length,
+      folders: vault.folders.length,
+      exportedAt: parsed.updatedAt ?? null,
+    });
     return {
       vault,
       entryCount: vault.entries.length,
@@ -204,6 +219,16 @@ export function mergeSyncedVaults(localVault: VaultState, remoteVault: VaultStat
     return first.createdAt.localeCompare(second.createdAt);
   });
   const mergedEntries = Array.from(entries.values()).sort((first, second) => entryTime(second) - entryTime(first));
+
+  addDebugLog("sync", "merge complete", {
+    localEntries: localVault.entries.length,
+    remoteEntries: remoteVault.entries.length,
+    mergedEntries: mergedEntries.length,
+    addedEntries,
+    updatedEntries,
+    localRoot: localRoot.id,
+    remoteRoot: remoteRoot.id,
+  });
 
   return {
     vault: {

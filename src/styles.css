@@ -648,6 +648,30 @@ small,
   font-size: 13px;
 }
 
+.debug-console {
+  border: 1px solid var(--border);
+  background: #000000;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.debug-console span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.debug-console pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .theme-grid {
   display: grid;
   gap: 8px;

@@ -1,4 +1,5 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { addDebugLog } from "./debugLog";
 
 export type WebDavConfig = {
   url: string;
@@ -23,9 +24,7 @@ function normalizeBaseUrl(value: string) {
 
   try {
     const url = new URL(trimmed);
-    if (!["http:", "https:"].includes(url.protocol)) {
-      throw new Error();
-    }
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error();
     return url.toString().replace(/\/+$/g, "");
   } catch {
     throw new Error("Адрес WebDAV должен начинаться с http:// или https://.");
@@ -84,6 +83,13 @@ async function request(method: "GET" | "PUT", config: WebDavConfig, data?: strin
     "Content-Type": "application/json; charset=utf-8",
   };
 
+  addDebugLog("webdav", `${method} request`, {
+    url: url.replace(/_pandora_t=\d+/g, "_pandora_t=..."),
+    native: Capacitor.isNativePlatform(),
+    hasBody: Boolean(data),
+    bodyLength: data?.length ?? 0,
+  });
+
   if (Capacitor.isNativePlatform()) {
     const response = await CapacitorHttp.request({
       method,
@@ -92,9 +98,16 @@ async function request(method: "GET" | "PUT", config: WebDavConfig, data?: strin
       data,
       responseType: "text",
     });
+    const responseText = stringifyData(response.data);
+    addDebugLog("webdav", `${method} response`, {
+      status: response.status,
+      dataType: typeof response.data,
+      dataLength: responseText.length,
+      contentType: response.headers?.["content-type"] ?? response.headers?.["Content-Type"] ?? "",
+    });
     return {
       status: response.status,
-      data: stringifyData(response.data),
+      data: responseText,
       headers: response.headers ?? {},
     };
   }
@@ -105,9 +118,15 @@ async function request(method: "GET" | "PUT", config: WebDavConfig, data?: strin
     body: method === "PUT" ? data : undefined,
     cache: "no-store",
   });
+  const responseText = await response.text();
+  addDebugLog("webdav", `${method} response`, {
+    status: response.status,
+    dataLength: responseText.length,
+    contentType: response.headers.get("content-type") ?? "",
+  });
   return {
     status: response.status,
-    data: await response.text(),
+    data: responseText,
     headers: Object.fromEntries(response.headers.entries()),
   };
 }
@@ -126,13 +145,21 @@ function statusError(action: string, response: WebDavResponse) {
 
 export async function testWebDavConnection(config: WebDavConfig) {
   const response = await request("GET", config);
-  if ([200, 404].includes(response.status)) return;
+  if ([200, 404].includes(response.status)) {
+    addDebugLog("webdav", "connection test ok", { status: response.status });
+    return;
+  }
+  addDebugLog("webdav", "connection test failed", { status: response.status }, "error");
   throw statusError("Не удалось подключиться к Koofr/WebDAV", response);
 }
 
 export async function uploadWebDavVault(config: WebDavConfig, rawVault: string) {
   const response = await request("PUT", config, rawVault);
-  if ([200, 201, 204].includes(response.status)) return;
+  if ([200, 201, 204].includes(response.status)) {
+    addDebugLog("webdav", "upload ok", { status: response.status, bytes: rawVault.length });
+    return;
+  }
+  addDebugLog("webdav", "upload failed", { status: response.status }, "error");
   throw statusError("Не удалось сохранить файл синхронизации в Koofr/WebDAV", response);
 }
 
@@ -140,10 +167,13 @@ export async function downloadWebDavVault(config: WebDavConfig) {
   const response = await request("GET", config);
   if (response.status === 200) {
     if (!response.data.trim()) throw new Error("Файл синхронизации в облаке пустой.");
+    addDebugLog("webdav", "download ok", { status: response.status, bytes: response.data.length });
     return response.data;
   }
   if (response.status === 404) {
+    addDebugLog("webdav", "download missing", { status: response.status }, "warn");
     throw new Error("В облаке ещё нет файла Pandora. Сначала нажмите «Сохранить в облако» на устройстве с записями.");
   }
+  addDebugLog("webdav", "download failed", { status: response.status }, "error");
   throw statusError("Не удалось загрузить файл синхронизации из Koofr/WebDAV", response);
 }
