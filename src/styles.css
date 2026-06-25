@@ -691,6 +691,28 @@ small,
   font-size: 13px;
 }
 
+.host-list {
+  display: grid;
+  gap: 8px;
+}
+
+.host-list button {
+  justify-content: space-between;
+  text-align: left;
+  min-height: 48px;
+}
+
+.host-list span,
+.host-list small {
+  display: block;
+}
+
+.host-list small {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 12px;
+}
+
 .debug-console {
   border: 1px solid var(--border);
   background: #000000;

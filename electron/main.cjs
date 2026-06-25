@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const dgram = require("dgram");
 const http = require("http");
 const os = require("os");
 const path = require("path");
@@ -6,6 +7,9 @@ const path = require("path");
 let mainWindow = null;
 let syncServer = null;
 let syncState = null;
+let discoverySocket = null;
+let discoveryTimer = null;
+const discoveryPort = 45454;
 
 function iconPath() {
   return app.isPackaged
@@ -43,7 +47,18 @@ function localAddresses(port) {
   return Object.values(os.networkInterfaces())
     .flat()
     .filter((item) => item && item.family === "IPv4" && !item.internal)
-    .map((item) => `http://${item.address}:${port}`);
+    .map((item) => item.address)
+    .sort((left, right) => addressPriority(left) - addressPriority(right))
+    .map((address) => `http://${address}:${port}`);
+}
+
+function addressPriority(address) {
+  if (address.startsWith("192.168.")) return 0;
+  if (address.startsWith("10.")) return 1;
+  const second = Number(address.split(".")[1]);
+  if (address.startsWith("172.") && second >= 16 && second <= 31) return 2;
+  if (address.startsWith("169.254.")) return 20;
+  return 10;
 }
 
 function setCors(response) {
@@ -53,11 +68,49 @@ function setCors(response) {
 }
 
 function stopSyncServer() {
+  stopDiscovery();
   if (syncServer) {
     syncServer.close();
     syncServer = null;
   }
   syncState = null;
+}
+
+function startDiscovery(session) {
+  stopDiscovery();
+  discoverySocket = dgram.createSocket("udp4");
+  discoverySocket.bind(() => {
+    discoverySocket?.setBroadcast(true);
+  });
+
+  const sendBeacon = () => {
+    if (!discoverySocket || !syncState) return;
+    const payload = Buffer.from(
+      JSON.stringify({
+        type: "pandora-sync-host",
+        name: os.hostname(),
+        code: session.code,
+        urls: session.urls,
+        at: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+    discoverySocket.send(payload, discoveryPort, "255.255.255.255");
+  };
+
+  discoveryTimer = setInterval(sendBeacon, 1000);
+  sendBeacon();
+}
+
+function stopDiscovery() {
+  if (discoveryTimer) {
+    clearInterval(discoveryTimer);
+    discoveryTimer = null;
+  }
+  if (discoverySocket) {
+    discoverySocket.close();
+    discoverySocket = null;
+  }
 }
 
 function readBody(request) {
@@ -130,10 +183,12 @@ ipcMain.handle("sync:start", async (_event, rawVault) => {
   });
 
   const port = syncServer.address().port;
-  return {
+  const session = {
     code,
     urls: localAddresses(port),
   };
+  startDiscovery(session);
+  return session;
 });
 
 ipcMain.handle("sync:stop", () => {

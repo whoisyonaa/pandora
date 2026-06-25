@@ -1,5 +1,6 @@
 import { ChangeEvent, ClipboardEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Share } from "@capacitor/share";
 import { AndroidBiometryStrength, BiometricAuth } from "@aparajita/capacitor-biometric-auth";
 import {
   Check,
@@ -46,7 +47,20 @@ const biometricUnlockKey = "pandora.biometricUnlock.v1";
 type LocalSyncSession = {
   code: string;
   urls: string[];
+  name?: string;
 };
+
+type LocalSyncHost = {
+  name: string;
+  code: string;
+  urls: string[];
+};
+
+type PandoraDiscoveryPlugin = {
+  scan(options?: { timeoutMs?: number }): Promise<{ hosts: LocalSyncHost[] }>;
+};
+
+const PandoraDiscovery = registerPlugin<PandoraDiscoveryPlugin>("PandoraDiscovery");
 
 declare global {
   interface Window {
@@ -854,6 +868,8 @@ function SettingsPanel({
   const [remoteCode, setRemoteCode] = useState("");
   const [incomingReady, setIncomingReady] = useState(false);
   const [debugLogVersion, setDebugLogVersion] = useState(0);
+  const [discoveredHosts, setDiscoveredHosts] = useState<LocalSyncHost[]>([]);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [webdav, setWebdav] = useState<WebDavConfig>(
     vault.settings.sync.webdav ?? {
       url: "https://app.koofr.net/dav/Koofr",
@@ -934,8 +950,18 @@ function SettingsPanel({
     logDebug("debug", "log copied", { entries: debugLogs.length });
   }
 
-  function downloadDebugLog() {
+  async function downloadDebugLog() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    if (Capacitor.isNativePlatform()) {
+      await Share.share({
+        title: "Pandora debug log",
+        text: formatDebugLogs(),
+        dialogTitle: "Отправить лог Pandora",
+      });
+      logDebug("debug", "log shared", { entries: debugLogs.length });
+      setDebugLogVersion((version) => version + 1);
+      return;
+    }
     downloadText(`pandora-debug-${stamp}.log`, formatDebugLogs());
     logDebug("debug", "log downloaded", { entries: debugLogs.length });
   }
@@ -1129,6 +1155,32 @@ function SettingsPanel({
       setIncomingReady(false);
       setSyncMessage("Локальная синхронизация остановлена.");
     });
+  }
+
+  async function scanLocalHosts() {
+    setDiscoveryBusy(true);
+    try {
+      const result = await PandoraDiscovery.scan({ timeoutMs: 4500 });
+      setDiscoveredHosts(result.hosts);
+      if (result.hosts.length === 1) {
+        selectLocalHost(result.hosts[0]);
+      }
+      setSyncMessage(
+        result.hosts.length > 0
+          ? `Найдено ПК: ${result.hosts.length}. Выберите устройство ниже.`
+          : "ПК не найден. Убедитесь, что на Windows нажато «Открыть связь», а устройства в одной Wi‑Fi сети.",
+      );
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : "Не удалось найти ПК в сети.");
+    } finally {
+      setDiscoveryBusy(false);
+    }
+  }
+
+  function selectLocalHost(host: LocalSyncHost) {
+    setRemoteAddress(host.urls[0] || "");
+    setRemoteCode(host.code);
+    setSyncMessage(`Выбрано: ${host.name}. Теперь можно получить или отправить записи.`);
   }
 
   function remoteUrl() {
@@ -1381,6 +1433,12 @@ function SettingsPanel({
         )}
         {syncMessage && <p className="sync-message">{syncMessage}</p>}
         <div className="button-row">
+          {Capacitor.isNativePlatform() && (
+            <button onClick={scanLocalHosts} disabled={syncBusy || discoveryBusy}>
+              <Search size={16} />
+              {discoveryBusy ? "Поиск..." : "Найти ПК"}
+            </button>
+          )}
           <button onClick={startLocalSync} disabled={syncBusy || !window.pandoraSync}>
             <Upload size={16} />
             Запустить на ПК
@@ -1394,6 +1452,16 @@ function SettingsPanel({
             Остановить
           </button>
         </div>
+        {discoveredHosts.length > 0 && (
+          <div className="host-list">
+            {discoveredHosts.map((host) => (
+              <button key={`${host.code}-${host.urls.join("|")}`} onClick={() => selectLocalHost(host)}>
+                <span>{host.name}</span>
+                <small>{host.urls[0]}</small>
+              </button>
+            ))}
+          </div>
+        )}
         <label>
           Адрес ПК
           <input value={remoteAddress} onChange={(event) => setRemoteAddress(event.target.value)} placeholder="http://192.168.1.10:12345" />
