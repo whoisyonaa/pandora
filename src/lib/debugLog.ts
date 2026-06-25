@@ -1,3 +1,5 @@
+import { Capacitor } from "@capacitor/core";
+
 const debugLogKey = "pandora.debugLog.v1";
 const maxEntries = 700;
 
@@ -13,7 +15,7 @@ export type DebugLogEntry = {
 
 function platformName() {
   const userAgent = navigator.userAgent || "";
-  if (Boolean(window.Capacitor)) return "android-capacitor";
+  if (Capacitor.isNativePlatform()) return `${Capacitor.getPlatform()}-native`;
   if (userAgent.toLowerCase().includes("electron")) return "electron-windows";
   return "browser";
 }

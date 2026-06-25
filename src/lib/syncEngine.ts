@@ -53,6 +53,28 @@ function isSyncPayload(value: unknown): value is SyncPayload {
   return candidate?.format === "pandora-sync-vault" && candidate.version === 1 && isEncryptedVault(candidate.encryptedVault);
 }
 
+function describeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+    };
+  }
+  return {
+    name: typeof error,
+    message: String(error),
+  };
+}
+
+async function decryptSyncVault(encrypted: EncryptedVault, masterPassword: string, format: "sync" | "legacy") {
+  try {
+    return await decryptVault(encrypted, masterPassword);
+  } catch (error) {
+    addDebugLog("sync", "decrypt failed", { format, ...describeError(error) }, "error");
+    throw new Error("Не удалось расшифровать файл синхронизации. Проверьте, что на обоих устройствах введён одинаковый мастер-пароль. Также возможно, что файл в облаке повреждён или создан старой несовместимой сборкой.");
+  }
+}
+
 export async function buildSyncPayload(vault: VaultState, masterPassword: string) {
   const encryptedVault = await encryptVault(vault, masterPassword);
   const payload: SyncPayload = {
@@ -82,7 +104,7 @@ export async function readSyncPayload(raw: string, masterPassword: string): Prom
   }
 
   if (isSyncPayload(parsed)) {
-    const vault = await decryptVault(parsed.encryptedVault, masterPassword);
+    const vault = await decryptSyncVault(parsed.encryptedVault, masterPassword, "sync");
     addDebugLog("sync", "read sync payload", {
       format: parsed.format,
       declaredEntries: parsed.entryCount,
@@ -101,7 +123,7 @@ export async function readSyncPayload(raw: string, masterPassword: string): Prom
   }
 
   if (isEncryptedVault(parsed)) {
-    const vault = await decryptVault(parsed, masterPassword);
+    const vault = await decryptSyncVault(parsed, masterPassword, "legacy");
     addDebugLog("sync", "read legacy payload", {
       decryptedEntries: vault.entries.length,
       folders: vault.folders.length,
