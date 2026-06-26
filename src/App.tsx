@@ -1918,12 +1918,14 @@ function EntryDetailsPanel({
   onEdit,
   onCreate,
   onCopy,
+  onClose,
 }: {
   entry: VaultEntry | null;
   vault: VaultState;
   onEdit: (entry: VaultEntry) => void;
   onCreate: () => void;
   onCopy: (message: string) => void;
+  onClose?: () => void;
 }) {
   const visibleEntries = activeEntries(vault.entries);
   const stats = vaultSecurityStats(visibleEntries);
@@ -1958,6 +1960,11 @@ function EntryDetailsPanel({
           <h2>{entry.title || "Новая запись"}</h2>
           <p>{entry.url || "Сайт не указан"}</p>
         </div>
+        {onClose && (
+          <button className="details-close" type="button" onClick={onClose} aria-label="Закрыть просмотр">
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       <div className="details-fields">
@@ -2112,7 +2119,7 @@ export default function App() {
   const [manualLock, setManualLock] = useState(false);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setBooting(false), 1500);
+    const timeout = window.setTimeout(() => setBooting(false), 520);
     return () => window.clearTimeout(timeout);
   }, []);
 
@@ -2356,7 +2363,7 @@ export default function App() {
         <CommandBar active={activeSection} query={query} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
         <div className={activeSection === "overview" ? "workspace-grid overview-mode" : "workspace-grid"}>
           <div className="workspace-primary">{mainContent}</div>
-          <EntryDetailsPanel entry={selectedEntry} vault={vault} onEdit={setEditingEntry} onCreate={createEntry} onCopy={setStatus} />
+          <EntryDetailsPanel entry={selectedEntry} vault={vault} onEdit={setEditingEntry} onCreate={createEntry} onCopy={setStatus} onClose={() => setSelectedEntry(null)} />
         </div>
       </section>
       <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
