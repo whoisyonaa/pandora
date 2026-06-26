@@ -25,6 +25,7 @@ export type VaultEntry = {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
   usedCount: number;
 };
 

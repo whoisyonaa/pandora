@@ -3,9 +3,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Share } from "@capacitor/share";
 import { AndroidBiometryStrength, BiometricAuth } from "@aparajita/capacitor-biometric-auth";
 import {
-  Activity,
   Check,
-  ChevronRight,
   Clock3,
   Command,
   Copy,
@@ -17,13 +15,10 @@ import {
   Folder,
   FolderPlus,
   Globe,
-  Heart,
   KeyRound,
-  Laptop,
   LayoutDashboard,
   Lock,
   LogOut,
-  MoreHorizontal,
   Moon,
   PanelRight,
   Plus,
@@ -33,12 +28,10 @@ import {
   Settings,
   ShieldCheck,
   Shuffle,
-  Smartphone,
   Star,
   Trash2,
   Upload,
   X,
-  Zap,
 } from "lucide-react";
 import type { SortMode, VaultEntry, VaultFolder, VaultState } from "./types/vault";
 import { createEmptyVault } from "./lib/vaultFactory";
@@ -78,9 +71,7 @@ type VaultSection =
   | "favorites"
   | "recent"
   | "folders"
-  | "generator"
   | "security"
-  | "devices"
   | "sync"
   | "trash"
   | "settings";
@@ -224,11 +215,23 @@ function descendantFolderIds(folderId: string, folders: VaultFolder[]) {
 
 function saveEntry(vault: VaultState, entry: VaultEntry): VaultState {
   const exists = vault.entries.some((item) => item.id === entry.id);
-  const saved = { ...entry, updatedAt: now() };
+  const saved = { ...entry, deletedAt: undefined, updatedAt: now() };
   return {
     ...vault,
     entries: exists ? vault.entries.map((item) => (item.id === entry.id ? saved : item)) : [saved, ...vault.entries],
   };
+}
+
+function isDeletedEntry(entry: VaultEntry) {
+  return Boolean(entry.deletedAt);
+}
+
+function activeEntries(entries: VaultEntry[]) {
+  return entries.filter((entry) => !isDeletedEntry(entry));
+}
+
+function trashEntries(entries: VaultEntry[]) {
+  return entries.filter(isDeletedEntry);
 }
 
 function entryFolderName(entry: VaultEntry, folders: VaultFolder[]) {
@@ -489,23 +492,8 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
             <img src="./pandoralogo.png" alt="Pandora" />
           </div>
           <div className="login-title">
-            <span>PANDORA / SECURE VAULT</span>
-            <h1>{mode === "create" ? "Создать хранилище" : "Разблокировать"}</h1>
-          </div>
-        </div>
-
-        <div className="unlock-status-grid" aria-label="Статус локального хранилища">
-          <div>
-            <span>VAULT</span>
-            <strong>{hasStoredVault() ? "LOCAL" : "NEW"}</strong>
-          </div>
-          <div>
-            <span>DEVICE</span>
-            <strong>{Capacitor.isNativePlatform() ? "ANDROID" : "WINDOWS"}</strong>
-          </div>
-          <div>
-            <span>LOCK</span>
-            <strong>{mode === "unlock" ? "LOCKED" : "SETUP"}</strong>
+            <span>PANDORA</span>
+            <h1>Pandora</h1>
           </div>
         </div>
 
@@ -547,15 +535,6 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
           </button>
         )}
       </section>
-      <aside className="unlock-aside" aria-label="Состояние Pandora">
-        <span>SECURITY OVERVIEW</span>
-        <h2>Локальное хранилище остаётся зашифрованным до ввода мастер-пароля.</h2>
-        <div className="cipher-metrics">
-          <div><strong>AES</strong><small>payload</small></div>
-          <div><strong>OFFLINE</strong><small>first</small></div>
-          <div><strong>NO KEYS</strong><small>in logs</small></div>
-        </div>
-      </aside>
     </main>
   );
 }
@@ -1182,7 +1161,7 @@ function SettingsPanel({
   }
 
   async function syncCloud() {
-    if (vault.entries.length === 0 && window.confirm("Локальное хранилище пустое. Загрузить данные из облака?")) {
+    if (activeEntries(vault.entries).length === 0 && window.confirm("Локальное хранилище пустое. Загрузить данные из облака?")) {
       await downloadFromCloud();
       return;
     }
@@ -1690,12 +1669,10 @@ function CopyButton({ value, label, onCopied }: { value: string; label: string; 
 
 function NavigationRail({
   active,
-  vault,
   onSelect,
   onLock,
 }: {
   active: VaultSection;
-  vault: VaultState;
   onSelect: (section: VaultSection) => void;
   onLock: () => void;
 }) {
@@ -1705,9 +1682,7 @@ function NavigationRail({
     { id: "favorites", label: "Избранное", icon: <Star size={18} /> },
     { id: "recent", label: "Недавние", icon: <Clock3 size={18} /> },
     { id: "folders", label: "Папки", icon: <Folder size={18} /> },
-    { id: "generator", label: "Генератор", icon: <Shuffle size={18} /> },
     { id: "security", label: "Безопасность", icon: <ShieldCheck size={18} /> },
-    { id: "devices", label: "Устройства", icon: <Smartphone size={18} /> },
     { id: "sync", label: "Синхронизация", icon: <RefreshCcw size={18} /> },
     { id: "trash", label: "Корзина", icon: <Trash2 size={18} /> },
     { id: "settings", label: "Настройки", icon: <Settings size={18} /> },
@@ -1722,6 +1697,9 @@ function NavigationRail({
           <strong>Vault</strong>
           <small>UNLOCKED</small>
         </div>
+        <button className="rail-lock-icon" onClick={onLock} aria-label="Заблокировать">
+          <LogOut size={16} />
+        </button>
       </div>
       <nav>
         {sections.map((section) => (
@@ -1731,17 +1709,6 @@ function NavigationRail({
           </button>
         ))}
       </nav>
-      <div className="rail-footer">
-        <div className="rail-sync">
-          <RefreshCcw size={15} />
-          <span>{vault.settings.sync.lastSyncAt ? "Синхронизировано" : "Локально"}</span>
-        </div>
-        <small>{Capacitor.isNativePlatform() ? "Android device" : "Windows desktop"}</small>
-        <button className="rail-lock" onClick={onLock}>
-          <LogOut size={16} />
-          Заблокировать
-        </button>
-      </div>
     </aside>
   );
 }
@@ -1749,14 +1716,12 @@ function NavigationRail({
 function CommandBar({
   active,
   query,
-  status,
   onQuery,
   onCreate,
   onPalette,
 }: {
   active: VaultSection;
   query: string;
-  status: string;
   onQuery: (value: string) => void;
   onCreate: () => void;
   onPalette: () => void;
@@ -1767,9 +1732,7 @@ function CommandBar({
     favorites: "Избранное",
     recent: "Недавние",
     folders: "Папки",
-    generator: "Генератор",
     security: "Безопасность",
-    devices: "Устройства",
     sync: "Синхронизация",
     trash: "Корзина",
     settings: "Настройки",
@@ -1787,12 +1750,9 @@ function CommandBar({
       </label>
       <button className="secondary-command" onClick={onPalette}>
         <Command size={16} />
-        Ctrl K
+        Команды
+        <small>Ctrl+K</small>
       </button>
-      <span className="sync-pill">
-        <Activity size={15} />
-        {status || "Готово"}
-      </span>
       <button className="primary command-create" onClick={onCreate}>
         <Plus size={17} />
         Новая запись
@@ -1845,7 +1805,6 @@ function CommandPalette({
         </label>
         <div className="palette-list">
           <button onClick={() => { onCreate(); onClose(); }}><Plus size={16} />Создать запись</button>
-          <button onClick={() => { onSection("generator"); onClose(); }}><Shuffle size={16} />Открыть генератор</button>
           <button onClick={() => { onSection("sync"); onClose(); }}><RefreshCcw size={16} />Открыть синхронизацию</button>
           <button onClick={() => { onSection("settings"); onClose(); }}><Settings size={16} />Настройки</button>
           <button onClick={() => { onLock(); onClose(); }}><Lock size={16} />Заблокировать</button>
@@ -1866,14 +1825,12 @@ function VaultEntryRow({
   folders,
   selected,
   onSelect,
-  onCopy,
   onDragStart,
 }: {
   entry: VaultEntry;
   folders: VaultFolder[];
   selected: boolean;
   onSelect: (entry: VaultEntry) => void;
-  onCopy: (message: string) => void;
   onDragStart: (entryId: string) => void;
 }) {
   return (
@@ -1895,29 +1852,6 @@ function VaultEntryRow({
       </span>
       <span className="entry-folder">{entryFolderName(entry, folders)}</span>
       <span className="entry-date">{new Date(entry.updatedAt).toLocaleDateString("ru-RU")}</span>
-      <span className="entry-quick-actions">
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (entry.username) navigator.clipboard.writeText(entry.username).then(() => onCopy("Логин скопирован"));
-          }}
-        >
-          <Copy size={14} />
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (entry.password) navigator.clipboard.writeText(entry.password).then(() => onCopy("Пароль скопирован"));
-          }}
-        >
-          <KeyRound size={14} />
-        </span>
-        <MoreHorizontal size={15} />
-      </span>
     </button>
   );
 }
@@ -1930,7 +1864,6 @@ function VaultList({
   onSort,
   onSelect,
   onCreate,
-  onCopy,
   onDragStart,
 }: {
   entries: VaultEntry[];
@@ -1940,7 +1873,6 @@ function VaultList({
   onSort: (mode: SortMode) => void;
   onSelect: (entry: VaultEntry) => void;
   onCreate: () => void;
-  onCopy: (message: string) => void;
   onDragStart: (entryId: string) => void;
 }) {
   return (
@@ -1972,7 +1904,7 @@ function VaultList({
       ) : (
         <div className="vault-entry-list">
           {entries.map((entry) => (
-            <VaultEntryRow key={entry.id} entry={entry} folders={folders} selected={entry.id === selectedId} onSelect={onSelect} onCopy={onCopy} onDragStart={onDragStart} />
+            <VaultEntryRow key={entry.id} entry={entry} folders={folders} selected={entry.id === selectedId} onSelect={onSelect} onDragStart={onDragStart} />
           ))}
         </div>
       )}
@@ -1993,7 +1925,12 @@ function EntryDetailsPanel({
   onCreate: () => void;
   onCopy: (message: string) => void;
 }) {
-  const stats = vaultSecurityStats(vault.entries);
+  const visibleEntries = activeEntries(vault.entries);
+  const stats = vaultSecurityStats(visibleEntries);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  useEffect(() => {
+    setPasswordVisible(false);
+  }, [entry?.id]);
   if (!entry) {
     return (
       <aside className="entry-details-panel empty" aria-label="Обзор безопасности">
@@ -2002,7 +1939,7 @@ function EntryDetailsPanel({
         <h2>Выберите запись</h2>
         <p>Справа появятся логин, пароль, сайт, заметки и быстрые действия.</p>
         <div className="security-grid">
-          <div><span>ENTRIES</span><strong>{vault.entries.length}</strong></div>
+          <div><span>ENTRIES</span><strong>{visibleEntries.length}</strong></div>
           <div><span>WEAK</span><strong>{stats.weak}</strong></div>
           <div><span>REUSED</span><strong>{stats.duplicate}</strong></div>
           <div><span>OLD</span><strong>{stats.old}</strong></div>
@@ -2021,7 +1958,6 @@ function EntryDetailsPanel({
           <h2>{entry.title || "Новая запись"}</h2>
           <p>{entry.url || "Сайт не указан"}</p>
         </div>
-        <button className="icon-button" aria-label="Избранное"><Heart size={17} /></button>
       </div>
 
       <div className="details-fields">
@@ -2032,7 +1968,11 @@ function EntryDetailsPanel({
         </div>
         <div className="detail-field">
           <span>Пароль</span>
-          <strong className="password-dots">{entry.password ? "•••• •••• ••••" : "Не указан"}</strong>
+          <strong className={passwordVisible ? "password-value" : "password-dots"}>{entry.password ? (passwordVisible ? entry.password : "•".repeat(Math.min(Math.max(entry.password.length, 8), 24))) : "Не указан"}</strong>
+          <button className="copy-action" type="button" disabled={!entry.password} onClick={() => setPasswordVisible((current) => !current)}>
+            {passwordVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+            {passwordVisible ? "Скрыть" : "Показать"}
+          </button>
           <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
         </div>
         <div className="detail-field">
@@ -2055,7 +1995,7 @@ function EntryDetailsPanel({
         <div><span>LAST MODIFIED</span><strong>{new Date(entry.updatedAt).toLocaleString("ru-RU")}</strong></div>
         <div><span>CREATED</span><strong>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</strong></div>
         <div><span>PASSWORD AGE</span><strong>{passwordAgeDays(entry)} дн.</strong></div>
-        <div><span>SECURITY</span><strong>{passwordRisk(entry, vault.entries)}</strong></div>
+        <div><span>SECURITY</span><strong>{passwordRisk(entry, visibleEntries)}</strong></div>
       </div>
 
       <div className="details-actions">
@@ -2068,9 +2008,56 @@ function EntryDetailsPanel({
   );
 }
 
+function TrashPanel({
+  entries,
+  folders,
+  onRestore,
+  onDeletePermanently,
+}: {
+  entries: VaultEntry[];
+  folders: VaultFolder[];
+  onRestore: (entryId: string) => void;
+  onDeletePermanently: (entryId: string) => void;
+}) {
+  return (
+    <section className="section-workspace trash-workspace">
+      <div className="trash-head">
+        <div>
+          <h2>Корзина</h2>
+          <p className="muted">Удалённые записи хранятся здесь и синхронизируются между устройствами, пока вы не удалите их навсегда.</p>
+        </div>
+        <strong>{entries.length}</strong>
+      </div>
+      {entries.length === 0 ? (
+        <div className="vault-empty-state">
+          <Trash2 size={34} />
+          <h2>Корзина пуста</h2>
+          <p>Удалённые записи появятся здесь.</p>
+        </div>
+      ) : (
+        <div className="trash-list">
+          {entries.map((entry) => (
+            <div className="trash-row" key={entry.id}>
+              <EntryIcon entry={entry} />
+              <span className="entry-main">
+                <strong>{entry.title || "Новая запись"}</strong>
+                <small>{entry.username || entry.url || entryFolderName(entry, folders)}</small>
+              </span>
+              <small>{entry.deletedAt ? new Date(entry.deletedAt).toLocaleDateString("ru-RU") : ""}</small>
+              <button onClick={() => onRestore(entry.id)}><RefreshCcw size={15} />Восстановить</button>
+              <button className="danger" onClick={() => onDeletePermanently(entry.id)}><Trash2 size={15} />Удалить навсегда</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SecurityOverview({ vault }: { vault: VaultState }) {
-  const stats = vaultSecurityStats(vault.entries);
-  const total = Math.max(vault.entries.length, 1);
+  const visibleEntries = activeEntries(vault.entries);
+  const stats = vaultSecurityStats(visibleEntries);
+  const total = Math.max(visibleEntries.length, 1);
   const score = Math.max(0, Math.round(100 - ((stats.weak + stats.duplicate + stats.old) / total) * 35));
   return (
     <section className="security-overview">
@@ -2080,7 +2067,7 @@ function SecurityOverview({ vault }: { vault: VaultState }) {
         <div><i style={{ width: `${score}%` }} /></div>
       </div>
       <div className="overview-segments">
-        <div><span>Всего</span><strong>{vault.entries.length}</strong></div>
+        <div><span>Всего</span><strong>{visibleEntries.length}</strong></div>
         <div><span>Слабые</span><strong>{stats.weak}</strong></div>
         <div><span>Повторы</span><strong>{stats.duplicate}</strong></div>
         <div><span>Старые</span><strong>{stats.old}</strong></div>
@@ -2091,8 +2078,8 @@ function SecurityOverview({ vault }: { vault: VaultState }) {
   );
 }
 
-function DashboardPanel({ vault, onCreate, onSection }: { vault: VaultState; onCreate: () => void; onSection: (section: VaultSection) => void }) {
-  const recent = [...vault.entries].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
+function DashboardPanel({ vault }: { vault: VaultState }) {
+  const recent = activeEntries(vault.entries).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
   return (
     <section className="dashboard-panel">
       <SecurityOverview vault={vault} />
@@ -2100,12 +2087,6 @@ function DashboardPanel({ vault, onCreate, onSection }: { vault: VaultState; onC
         <section>
           <h2>Недавно изменены</h2>
           {recent.length === 0 ? <p className="muted">Пока нет записей.</p> : recent.map((entry) => <div className="recent-line" key={entry.id}><EntryIcon entry={entry} /><span>{entry.title || "Новая запись"}</span><small>{new Date(entry.updatedAt).toLocaleDateString("ru-RU")}</small></div>)}
-        </section>
-        <section>
-          <h2>Быстрые действия</h2>
-          <button onClick={onCreate}><Plus size={16} />Новая запись</button>
-          <button onClick={() => onSection("sync")}><RefreshCcw size={16} />Синхронизация</button>
-          <button onClick={() => onSection("security")}><ShieldCheck size={16} />Проверка безопасности</button>
         </section>
       </div>
     </section>
@@ -2186,7 +2167,7 @@ export default function App() {
     if (!vault) return [];
     const lower = query.trim().toLocaleLowerCase("ru-RU");
     const visibleFolderIds = selectedFolder ? descendantFolderIds(selectedFolder, vault.folders) : null;
-    return vault.entries
+    return activeEntries(vault.entries)
       .filter((entry) => !visibleFolderIds || visibleFolderIds.has(entry.folderId))
       .filter((entry) => !lower || [entry.title, entry.username, entry.url, entry.notes].join(" ").toLocaleLowerCase("ru-RU").includes(lower))
       .sort((first, second) => {
@@ -2195,6 +2176,8 @@ export default function App() {
         return new Date(second[sort]).getTime() - new Date(first[sort]).getTime();
       });
   }, [query, selectedFolder, sort, vault]);
+
+  const deletedEntries = useMemo(() => (vault ? trashEntries(vault.entries).sort((first, second) => new Date(second.deletedAt || second.updatedAt).getTime() - new Date(first.deletedAt || first.updatedAt).getTime()) : []), [vault]);
 
   useEffect(() => {
     function handleShortcuts(event: KeyboardEvent) {
@@ -2256,7 +2239,7 @@ export default function App() {
   function moveEntryToFolder(entryId: string, folderId: string) {
     if (!vault) return;
     const entry = vault.entries.find((item) => item.id === entryId);
-    if (!entry || entry.folderId === folderId) return;
+    if (!entry || entry.folderId === folderId || isDeletedEntry(entry)) return;
     const nextEntry = { ...entry, folderId, updatedAt: now() };
     const nextVault = {
       ...vault,
@@ -2266,6 +2249,41 @@ export default function App() {
       setSelectedEntry(nextEntry);
     }
     persist(nextVault, "Запись перемещена");
+  }
+
+  function moveEntryToTrash(entryId: string) {
+    if (!vault) return;
+    const entry = vault.entries.find((item) => item.id === entryId);
+    if (!entry || isDeletedEntry(entry)) return;
+    const deleted = { ...entry, deletedAt: now(), updatedAt: now() };
+    const nextVault = {
+      ...vault,
+      entries: vault.entries.map((item) => (item.id === entryId ? deleted : item)),
+    };
+    setSelectedEntry(null);
+    setEditingEntry(null);
+    persist(nextVault, "Запись перемещена в корзину");
+  }
+
+  function restoreEntry(entryId: string) {
+    if (!vault) return;
+    const entry = vault.entries.find((item) => item.id === entryId);
+    if (!entry) return;
+    const restored = { ...entry, deletedAt: undefined, updatedAt: now() };
+    const nextVault = {
+      ...vault,
+      entries: vault.entries.map((item) => (item.id === entryId ? restored : item)),
+    };
+    setSelectedEntry(restored);
+    setActiveSection("vault");
+    persist(nextVault, "Запись восстановлена");
+  }
+
+  function deleteEntryPermanently(entryId: string) {
+    if (!vault || !window.confirm("Удалить запись навсегда? Это действие нельзя отменить.")) return;
+    const nextVault = { ...vault, entries: vault.entries.filter((entry) => entry.id !== entryId) };
+    if (selectedEntry?.id === entryId) setSelectedEntry(null);
+    persist(nextVault, "Запись удалена навсегда");
   }
 
   const selectSection = (section: VaultSection) => {
@@ -2294,23 +2312,19 @@ export default function App() {
 
   const mainContent =
     activeSection === "overview" ? (
-      <DashboardPanel vault={vault} onCreate={createEntry} onSection={selectSection} />
+      <DashboardPanel vault={vault} />
     ) : activeSection === "security" ? (
       <section className="section-workspace"><SecurityOverview vault={vault} /><p className="muted">Проверка выполняется локально. Пароли не отправляются во внешние сервисы.</p></section>
-    ) : activeSection === "devices" ? (
-      <section className="section-workspace"><h2>Устройства</h2><p className="muted">Текущее устройство: {Capacitor.isNativePlatform() ? "Android" : "Windows"}. История устройств будет расширена поверх журнала синхронизации.</p></section>
     ) : activeSection === "sync" ? (
       <section className="section-workspace"><h2>Синхронизация</h2><p className="muted">Koofr/WebDAV и локальный Wi‑Fi обмен доступны в настройках.</p><button onClick={() => setSettingsOpen(true)}><RefreshCcw size={16} />Открыть настройки синхронизации</button></section>
-    ) : activeSection === "generator" ? (
-      <section className="section-workspace"><h2>Генератор</h2><p className="muted">Генератор паролей также доступен при создании или редактировании записи.</p><button onClick={createEntry}><Plus size={16} />Создать запись с генератором</button></section>
     ) : activeSection === "trash" ? (
-      <section className="section-workspace"><h2>Корзина</h2><p className="muted">Удаление сейчас выполняется без корзины. Раздел подготовлен для следующего этапа.</p></section>
+      <TrashPanel entries={deletedEntries} folders={vault.folders} onRestore={restoreEntry} onDeletePermanently={deleteEntryPermanently} />
     ) : (
       <>
         <div className="folder-panel">
           <FolderStrip
             folders={vault.folders}
-            entries={vault.entries}
+            entries={activeEntries(vault.entries)}
             selectedFolder={selectedFolder}
             onSelect={(id) => {
               setSelectedFolder(id);
@@ -2329,7 +2343,6 @@ export default function App() {
           onSort={setSort}
           onSelect={setSelectedEntry}
           onCreate={createEntry}
-          onCopy={setStatus}
           onDragStart={() => setSelectedEntry(null)}
         />
       </>
@@ -2338,9 +2351,9 @@ export default function App() {
   return (
     <main className="cipher-app-shell">
       <CipherBackground />
-      <NavigationRail active={activeSection} vault={vault} onSelect={selectSection} onLock={lockVault} />
+      <NavigationRail active={activeSection} onSelect={selectSection} onLock={lockVault} />
       <section className="cipher-workspace">
-        <CommandBar active={activeSection} query={query} status={status} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
+        <CommandBar active={activeSection} query={query} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
         <div className={activeSection === "overview" ? "workspace-grid overview-mode" : "workspace-grid"}>
           <div className="workspace-primary">{mainContent}</div>
           <EntryDetailsPanel entry={selectedEntry} vault={vault} onEdit={setEditingEntry} onCreate={createEntry} onCopy={setStatus} />
@@ -2349,14 +2362,14 @@ export default function App() {
       <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
         <button className={activeSection === "vault" ? "active" : ""} onClick={() => selectSection("vault")}><KeyRound size={18} /><span>Хранилище</span></button>
         <button className={activeSection === "favorites" ? "active" : ""} onClick={() => selectSection("favorites")}><Star size={18} /><span>Избранное</span></button>
-        <button className={activeSection === "generator" ? "active" : ""} onClick={() => selectSection("generator")}><Shuffle size={18} /><span>Генератор</span></button>
+        <button className={activeSection === "trash" ? "active" : ""} onClick={() => selectSection("trash")}><Trash2 size={18} /><span>Корзина</span></button>
         <button className={activeSection === "security" ? "active" : ""} onClick={() => selectSection("security")}><ShieldCheck size={18} /><span>Защита</span></button>
         <button onClick={() => setSettingsOpen(true)}><Settings size={18} /><span>Настройки</span></button>
       </nav>
 
       <CommandPalette
         open={commandPaletteOpen}
-        entries={vault.entries}
+        entries={activeEntries(vault.entries)}
         folders={vault.folders}
         onClose={() => setCommandPaletteOpen(false)}
         onCreate={createEntry}
@@ -2380,11 +2393,8 @@ export default function App() {
             folders={vault.folders}
             onClose={() => setEditingEntry(null)}
             onDelete={(id) => {
-              if (!vault || !window.confirm("Удалить запись?")) return;
-              const nextVault = { ...vault, entries: vault.entries.filter((entry) => entry.id !== id) };
-              setSelectedEntry(null);
-              setEditingEntry(null);
-              persist(nextVault, "Запись удалена");
+              if (!vault || !window.confirm("Переместить запись в корзину?")) return;
+              moveEntryToTrash(id);
             }}
             onSave={(entry) => {
               if (!vault) return;
@@ -2467,7 +2477,7 @@ export default function App() {
 
       <div className="theme-corner" aria-hidden="true">
         <Moon size={14} />
-        {vault.entries.length.toString().padStart(2, "0")}
+        {activeEntries(vault.entries).length.toString().padStart(2, "0")}
       </div>
     </main>
   );

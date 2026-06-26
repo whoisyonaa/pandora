@@ -104,4 +104,44 @@ describe("sync engine", () => {
     expect(workFolders).toHaveLength(1);
     expect(result.vault.entries.find((item) => item.id === "remote-entry")?.folderId).toBe(localFolder.id);
   });
+
+  it("syncs trashed entries by keeping deletedAt on the newest entry version", () => {
+    const local = createEmptyVault();
+    const remote = createEmptyVault();
+    const localEntry = entry({ id: "shared-entry", title: "Local", folderId: local.folders[0].id, updatedAt: "2026-06-25T10:00:00.000Z" });
+    const remoteEntry = {
+      ...localEntry,
+      deletedAt: "2026-06-25T11:00:00.000Z",
+      updatedAt: "2026-06-25T11:00:00.000Z",
+    };
+    local.entries.push(localEntry);
+    remote.entries.push(remoteEntry);
+
+    const result = mergeSyncedVaults(local, remote);
+
+    expect(result.vault.entries.find((item) => item.id === "shared-entry")?.deletedAt).toBe("2026-06-25T11:00:00.000Z");
+  });
+
+  it("syncs restored entries by clearing deletedAt on the newest entry version", () => {
+    const local = createEmptyVault();
+    const remote = createEmptyVault();
+    const deletedEntry = entry({
+      id: "shared-entry",
+      title: "Deleted",
+      folderId: local.folders[0].id,
+      deletedAt: "2026-06-25T11:00:00.000Z",
+      updatedAt: "2026-06-25T11:00:00.000Z",
+    });
+    const restoredEntry = {
+      ...deletedEntry,
+      deletedAt: undefined,
+      updatedAt: "2026-06-25T12:00:00.000Z",
+    };
+    local.entries.push(deletedEntry);
+    remote.entries.push(restoredEntry);
+
+    const result = mergeSyncedVaults(local, remote);
+
+    expect(result.vault.entries.find((item) => item.id === "shared-entry")?.deletedAt).toBeUndefined();
+  });
 });
