@@ -1859,3 +1859,335 @@ body {
     border-radius: 28px 28px 0 0;
   }
 }
+
+/* Pandora UX polish v3: simpler, cleaner vault workspace */
+body {
+  background:
+    radial-gradient(circle at 50% -120px, rgba(255, 255, 255, 0.06), transparent 360px),
+    #050505;
+}
+
+.cipher-grid {
+  display: none;
+}
+
+.app-shell {
+  padding: 24px;
+}
+
+.app-frame {
+  width: min(1040px, 100%);
+  min-height: calc(100vh - 48px);
+  border-radius: 24px;
+  background: #0d0d0d;
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.62),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.topbar {
+  min-height: 76px;
+  padding: 22px 28px 10px;
+}
+
+.brand img {
+  width: 48px;
+  border-radius: 14px;
+}
+
+.brand strong {
+  font-size: 19px;
+}
+
+.icon-button {
+  width: 48px;
+  min-height: 48px;
+  border-radius: 14px;
+  background: #191919;
+}
+
+.workspace-hero {
+  min-height: auto;
+  margin: 14px 28px 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.workspace-hero::before,
+.workspace-hero::after {
+  content: none;
+  display: none;
+}
+
+.workspace-hero > div {
+  min-width: 0;
+}
+
+.workspace-hero span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-hero h1 {
+  margin: 6px 0 8px;
+  font-size: clamp(42px, 6vw, 58px);
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.workspace-hero p {
+  color: #b6b6b0;
+  font-size: 16px;
+}
+
+.hero-add {
+  min-width: 156px;
+  min-height: 48px;
+  border-radius: 14px;
+  padding: 0 18px;
+}
+
+.folder-strip {
+  gap: 8px;
+  padding: 0 28px 14px;
+}
+
+.folder-chip,
+.folder-add,
+.folder-create input {
+  min-height: 42px;
+  border-radius: 12px;
+}
+
+.folder-chip {
+  padding: 0 14px;
+  background: #151515;
+  color: #c6c6c0;
+}
+
+.folder-chip small {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.folder-chip.active {
+  background: #f2f2ee;
+  color: #050505;
+}
+
+.folder-add {
+  width: 42px;
+  background: #151515;
+}
+
+.search-row {
+  margin: 0 28px 18px;
+  padding: 0;
+  grid-template-columns: minmax(0, 1fr) 148px;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.search-box,
+.search-row select {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #090909;
+}
+
+.search-box {
+  padding: 0 14px;
+}
+
+.search-box input {
+  font-size: 15px;
+}
+
+.notes-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 28px 28px;
+}
+
+.note-row {
+  min-height: 78px;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: #141414;
+  padding: 14px 16px;
+}
+
+.note-row:last-child {
+  border-bottom-color: rgba(255, 255, 255, 0.09);
+}
+
+.note-row:hover,
+.note-row.active {
+  border-color: rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  background: #1a1a1a;
+}
+
+.entry-icon-preview {
+  width: 50px;
+  border-radius: 14px;
+  background: #0a0a0a;
+}
+
+.entry-icon-preview.has-image {
+  background: #0a0a0a;
+}
+
+.entry-icon-preview img {
+  padding: 7px;
+}
+
+.note-copy strong {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.note-copy small {
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.note-meta {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 12px;
+}
+
+.empty-state {
+  min-height: 320px;
+  margin: 0 28px 28px;
+  border-radius: 18px;
+  background: #121212;
+}
+
+.empty-state h2 {
+  font-size: 26px;
+}
+
+.empty-state button {
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+.editor-sheet,
+.settings-drawer,
+.login-panel {
+  border-radius: 22px;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 0;
+  }
+
+  .app-frame {
+    min-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .topbar {
+    min-height: 76px;
+    padding: max(18px, env(safe-area-inset-top)) 16px 8px;
+  }
+
+  .brand img {
+    width: 46px;
+  }
+
+  .icon-button {
+    width: 46px;
+    min-height: 46px;
+  }
+
+  .workspace-hero {
+    align-items: center;
+    margin: 18px 16px 16px;
+    padding: 0;
+  }
+
+  .workspace-hero h1 {
+    font-size: clamp(38px, 11vw, 46px);
+  }
+
+  .workspace-hero p {
+    font-size: 15px;
+  }
+
+  .workspace-hero .hero-add {
+    position: static;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
+    border-radius: 16px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .folder-strip {
+    padding: 0 16px 12px;
+  }
+
+  .search-row {
+    margin: 0 16px 14px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 0;
+  }
+
+  .search-box,
+  .search-row select {
+    min-height: 48px;
+    border-radius: 14px;
+  }
+
+  .notes-list {
+    gap: 10px;
+    padding: 0 16px 24px;
+  }
+
+  .note-row {
+    min-height: 76px;
+    grid-template-columns: 48px minmax(0, 1fr);
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .note-row:hover,
+  .note-row.active {
+    border-radius: 16px;
+  }
+
+  .entry-icon-preview {
+    width: 48px;
+  }
+
+  .empty-state {
+    min-height: 320px;
+    margin: 0 16px 24px;
+    border-radius: 18px;
+  }
+
+  .empty-state h2 {
+    font-size: 24px;
+  }
+
+  .editor-sheet,
+  .settings-drawer {
+    border-radius: 22px 22px 0 0;
+  }
+}
