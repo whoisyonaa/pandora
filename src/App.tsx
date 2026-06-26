@@ -3,26 +3,42 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Share } from "@capacitor/share";
 import { AndroidBiometryStrength, BiometricAuth } from "@aparajita/capacitor-biometric-auth";
 import {
+  Activity,
   Check,
+  ChevronRight,
+  Clock3,
+  Command,
   Copy,
   Download,
   Eye,
   EyeOff,
   FileUp,
   Fingerprint,
+  Folder,
   FolderPlus,
+  Globe,
+  Heart,
   KeyRound,
+  Laptop,
+  LayoutDashboard,
   Lock,
   LogOut,
+  MoreHorizontal,
   Moon,
+  PanelRight,
   Plus,
+  RefreshCcw,
   Save,
   Search,
   Settings,
+  ShieldCheck,
   Shuffle,
+  Smartphone,
+  Star,
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import type { SortMode, VaultEntry, VaultFolder, VaultState } from "./types/vault";
 import { createEmptyVault } from "./lib/vaultFactory";
@@ -55,6 +71,19 @@ type LocalSyncHost = {
   code: string;
   urls: string[];
 };
+
+type VaultSection =
+  | "overview"
+  | "vault"
+  | "favorites"
+  | "recent"
+  | "folders"
+  | "generator"
+  | "security"
+  | "devices"
+  | "sync"
+  | "trash"
+  | "settings";
 
 type PandoraDiscoveryPlugin = {
   scan(options?: { timeoutMs?: number }): Promise<{ hosts: LocalSyncHost[] }>;
@@ -200,6 +229,36 @@ function saveEntry(vault: VaultState, entry: VaultEntry): VaultState {
     ...vault,
     entries: exists ? vault.entries.map((item) => (item.id === entry.id ? saved : item)) : [saved, ...vault.entries],
   };
+}
+
+function entryFolderName(entry: VaultEntry, folders: VaultFolder[]) {
+  return folders.find((folder) => folder.id === entry.folderId)?.name ?? "Все";
+}
+
+function passwordAgeDays(entry: VaultEntry) {
+  const changedAt = new Date(entry.updatedAt || entry.createdAt).getTime();
+  if (!Number.isFinite(changedAt)) return 0;
+  return Math.max(0, Math.floor((Date.now() - changedAt) / 86400000));
+}
+
+function passwordRisk(entry: VaultEntry, entries: VaultEntry[]) {
+  const duplicate = Boolean(entry.password) && entries.some((item) => item.id !== entry.id && item.password === entry.password);
+  const weak = entry.password.length > 0 && entry.password.length < 10;
+  const old = passwordAgeDays(entry) > 180;
+  if (duplicate || weak) return "Требует внимания";
+  if (old) return "Давно не менялся";
+  return entry.password ? "Надёжный" : "Нет пароля";
+}
+
+function vaultSecurityStats(entries: VaultEntry[]) {
+  const passwordCounts = new Map<string, number>();
+  entries.forEach((entry) => {
+    if (entry.password) passwordCounts.set(entry.password, (passwordCounts.get(entry.password) ?? 0) + 1);
+  });
+  const duplicate = entries.filter((entry) => entry.password && (passwordCounts.get(entry.password) ?? 0) > 1).length;
+  const weak = entries.filter((entry) => entry.password && entry.password.length < 10).length;
+  const old = entries.filter((entry) => entry.password && passwordAgeDays(entry) > 180).length;
+  return { duplicate, weak, old };
 }
 
 function mergeVaults(localVault: VaultState, remoteVault: VaultState): VaultState {
@@ -350,6 +409,8 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"unlock" | "create">(hasStoredVault() ? "unlock" : "create");
   const [error, setError] = useState("");
+  const [visible, setVisible] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricBusy, setBiometricBusy] = useState(false);
 
@@ -420,28 +481,53 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
   }
 
   return (
-    <main className="lock-screen">
-      <section className="login-panel">
-        <div className="login-logo">
-          <img src="./pandoralogo.png" alt="Pandora" />
+    <main className="unlock-shell">
+      <CipherBackground variant="unlock" />
+      <section className={error ? "unlock-panel has-error" : "unlock-panel"}>
+        <div className="unlock-brand">
+          <div className="login-logo">
+            <img src="./pandoralogo.png" alt="Pandora" />
+          </div>
+          <div className="login-title">
+            <span>PANDORA / SECURE VAULT</span>
+            <h1>{mode === "create" ? "Создать хранилище" : "Разблокировать"}</h1>
+          </div>
         </div>
-        <div className="login-title">
-          <span>PANDORA</span>
-          <h1>{mode === "create" ? "Создайте пароль" : "Вход"}</h1>
+
+        <div className="unlock-status-grid" aria-label="Статус локального хранилища">
+          <div>
+            <span>VAULT</span>
+            <strong>{hasStoredVault() ? "LOCAL" : "NEW"}</strong>
+          </div>
+          <div>
+            <span>DEVICE</span>
+            <strong>{Capacitor.isNativePlatform() ? "ANDROID" : "WINDOWS"}</strong>
+          </div>
+          <div>
+            <span>LOCK</span>
+            <strong>{mode === "unlock" ? "LOCKED" : "SETUP"}</strong>
+          </div>
         </div>
 
         <form onSubmit={submit} className="login-form">
           <label>
             Мастер-пароль
-            <input
-              autoFocus
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Минимум 4 символа"
-              autoComplete={mode === "create" ? "new-password" : "current-password"}
-            />
+            <div className="unlock-password-line">
+              <input
+                autoFocus
+                type={visible ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyUp={(event) => setCapsLock(event.getModifierState("CapsLock"))}
+                placeholder="Минимум 4 символа"
+                autoComplete={mode === "create" ? "new-password" : "current-password"}
+              />
+              <button type="button" className="icon-button" onClick={() => setVisible((current) => !current)} aria-label={visible ? "Скрыть пароль" : "Показать пароль"}>
+                {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
           </label>
+          {capsLock && <p className="inline-warning">Caps Lock включён.</p>}
           {error && <p className="error">{error}</p>}
           <button type="submit" className="primary wide">
             <Lock size={16} />
@@ -461,6 +547,15 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
           </button>
         )}
       </section>
+      <aside className="unlock-aside" aria-label="Состояние Pandora">
+        <span>SECURITY OVERVIEW</span>
+        <h2>Локальное хранилище остаётся зашифрованным до ввода мастер-пароля.</h2>
+        <div className="cipher-metrics">
+          <div><strong>AES</strong><small>payload</small></div>
+          <div><strong>OFFLINE</strong><small>first</small></div>
+          <div><strong>NO KEYS</strong><small>in logs</small></div>
+        </div>
+      </aside>
     </main>
   );
 }
@@ -1541,6 +1636,463 @@ function SettingsPanel({
   );
 }
 
+function CipherBackground({ variant = "surface" }: { variant?: "surface" | "unlock" | "empty" }) {
+  const packets = ["A7 F2 9C 18", "BLOCK 0038", "KEY SLOT 04", "SYNC 7A:20", "AES-256-GCM", "SHA-256", "DEVICE 02", "LOCAL VAULT", "PACKET 18/24"];
+  return (
+    <div className={`cipher-background ${variant}`} aria-hidden="true">
+      {packets.map((packet, index) => (
+        <span key={`${packet}-${index}`}>{packet}</span>
+      ))}
+    </div>
+  );
+}
+
+function CopyButton({ value, label, onCopied }: { value: string; label: string; onCopied: (message: string) => void }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      className={done ? "copy-action copied" : "copy-action"}
+      type="button"
+      disabled={!value}
+      onClick={async () => {
+        if (!value) return;
+        await navigator.clipboard.writeText(value);
+        setDone(true);
+        onCopied(`${label} скопирован`);
+        window.setTimeout(() => setDone(false), 1200);
+      }}
+    >
+      {done ? <Check size={15} /> : <Copy size={15} />}
+      {label}
+    </button>
+  );
+}
+
+function NavigationRail({
+  active,
+  vault,
+  onSelect,
+  onLock,
+}: {
+  active: VaultSection;
+  vault: VaultState;
+  onSelect: (section: VaultSection) => void;
+  onLock: () => void;
+}) {
+  const sections: Array<{ id: VaultSection; label: string; icon: JSX.Element }> = [
+    { id: "overview", label: "Обзор", icon: <LayoutDashboard size={18} /> },
+    { id: "vault", label: "Хранилище", icon: <KeyRound size={18} /> },
+    { id: "favorites", label: "Избранное", icon: <Star size={18} /> },
+    { id: "recent", label: "Недавние", icon: <Clock3 size={18} /> },
+    { id: "folders", label: "Папки", icon: <Folder size={18} /> },
+    { id: "generator", label: "Генератор", icon: <Shuffle size={18} /> },
+    { id: "security", label: "Безопасность", icon: <ShieldCheck size={18} /> },
+    { id: "devices", label: "Устройства", icon: <Smartphone size={18} /> },
+    { id: "sync", label: "Синхронизация", icon: <RefreshCcw size={18} /> },
+    { id: "trash", label: "Корзина", icon: <Trash2 size={18} /> },
+    { id: "settings", label: "Настройки", icon: <Settings size={18} /> },
+  ];
+
+  return (
+    <aside className="navigation-rail" aria-label="Навигация Pandora">
+      <div className="rail-brand">
+        <img src="./pandoralogo.png" alt="" />
+        <div>
+          <span>PANDORA</span>
+          <strong>Vault</strong>
+          <small>UNLOCKED</small>
+        </div>
+      </div>
+      <nav>
+        {sections.map((section) => (
+          <button key={section.id} className={active === section.id ? "rail-item active" : "rail-item"} onClick={() => onSelect(section.id)}>
+            {section.icon}
+            <span>{section.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="rail-footer">
+        <div className="rail-sync">
+          <RefreshCcw size={15} />
+          <span>{vault.settings.sync.lastSyncAt ? "Синхронизировано" : "Локально"}</span>
+        </div>
+        <small>{Capacitor.isNativePlatform() ? "Android device" : "Windows desktop"}</small>
+        <button className="rail-lock" onClick={onLock}>
+          <LogOut size={16} />
+          Заблокировать
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function CommandBar({
+  active,
+  query,
+  status,
+  onQuery,
+  onCreate,
+  onPalette,
+}: {
+  active: VaultSection;
+  query: string;
+  status: string;
+  onQuery: (value: string) => void;
+  onCreate: () => void;
+  onPalette: () => void;
+}) {
+  const titles: Record<VaultSection, string> = {
+    overview: "Обзор",
+    vault: "Хранилище",
+    favorites: "Избранное",
+    recent: "Недавние",
+    folders: "Папки",
+    generator: "Генератор",
+    security: "Безопасность",
+    devices: "Устройства",
+    sync: "Синхронизация",
+    trash: "Корзина",
+    settings: "Настройки",
+  };
+
+  return (
+    <header className="command-bar">
+      <div>
+        <span>SECTION</span>
+        <h1>{titles[active]}</h1>
+      </div>
+      <label className="command-search">
+        <Search size={17} />
+        <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Поиск по записям" />
+      </label>
+      <button className="secondary-command" onClick={onPalette}>
+        <Command size={16} />
+        Ctrl K
+      </button>
+      <span className="sync-pill">
+        <Activity size={15} />
+        {status || "Готово"}
+      </span>
+      <button className="primary command-create" onClick={onCreate}>
+        <Plus size={17} />
+        Новая запись
+      </button>
+    </header>
+  );
+}
+
+function CommandPalette({
+  open,
+  entries,
+  folders,
+  onClose,
+  onCreate,
+  onSelectEntry,
+  onSelectFolder,
+  onSection,
+  onLock,
+}: {
+  open: boolean;
+  entries: VaultEntry[];
+  folders: VaultFolder[];
+  onClose: () => void;
+  onCreate: () => void;
+  onSelectEntry: (entry: VaultEntry) => void;
+  onSelectFolder: (folderId: string) => void;
+  onSection: (section: VaultSection) => void;
+  onLock: () => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (open) setSearch("");
+  }, [open]);
+
+  if (!open) return null;
+
+  const lower = search.trim().toLocaleLowerCase("ru-RU");
+  const matchedEntries = entries
+    .filter((entry) => !lower || [entry.title, entry.username, entry.url].join(" ").toLocaleLowerCase("ru-RU").includes(lower))
+    .slice(0, 6);
+
+  return (
+    <div className="palette-layer" role="dialog" aria-modal="true" aria-label="Command Palette">
+      <button className="palette-scrim" onClick={onClose} aria-label="Закрыть Command Palette" />
+      <section className="command-palette">
+        <label className="palette-input">
+          <Command size={18} />
+          <input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Команда или запись" />
+        </label>
+        <div className="palette-list">
+          <button onClick={() => { onCreate(); onClose(); }}><Plus size={16} />Создать запись</button>
+          <button onClick={() => { onSection("generator"); onClose(); }}><Shuffle size={16} />Открыть генератор</button>
+          <button onClick={() => { onSection("sync"); onClose(); }}><RefreshCcw size={16} />Открыть синхронизацию</button>
+          <button onClick={() => { onSection("settings"); onClose(); }}><Settings size={16} />Настройки</button>
+          <button onClick={() => { onLock(); onClose(); }}><Lock size={16} />Заблокировать</button>
+          {folders.slice(0, 5).map((folder) => (
+            <button key={folder.id} onClick={() => { onSelectFolder(folder.id); onClose(); }}><Folder size={16} />{folder.name}</button>
+          ))}
+          {matchedEntries.map((entry) => (
+            <button key={entry.id} onClick={() => { onSelectEntry(entry); onClose(); }}><KeyRound size={16} />{entry.title || "Новая запись"}</button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function VaultEntryRow({
+  entry,
+  folders,
+  selected,
+  onSelect,
+  onCopy,
+  onDragStart,
+}: {
+  entry: VaultEntry;
+  folders: VaultFolder[];
+  selected: boolean;
+  onSelect: (entry: VaultEntry) => void;
+  onCopy: (message: string) => void;
+  onDragStart: (entryId: string) => void;
+}) {
+  return (
+    <button
+      className={selected ? "vault-entry-row selected" : "vault-entry-row"}
+      onClick={() => onSelect(entry)}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-pandora-entry", entry.id);
+        event.dataTransfer.setData("text/plain", entry.id);
+        onDragStart(entry.id);
+      }}
+    >
+      <EntryIcon entry={entry} />
+      <span className="entry-main">
+        <strong>{entry.title || "Новая запись"}</strong>
+        <small>{entry.username || entry.url || "Логин не указан"}</small>
+      </span>
+      <span className="entry-folder">{entryFolderName(entry, folders)}</span>
+      <span className="entry-date">{new Date(entry.updatedAt).toLocaleDateString("ru-RU")}</span>
+      <span className="entry-quick-actions">
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (entry.username) navigator.clipboard.writeText(entry.username).then(() => onCopy("Логин скопирован"));
+          }}
+        >
+          <Copy size={14} />
+        </span>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (entry.password) navigator.clipboard.writeText(entry.password).then(() => onCopy("Пароль скопирован"));
+          }}
+        >
+          <KeyRound size={14} />
+        </span>
+        <MoreHorizontal size={15} />
+      </span>
+    </button>
+  );
+}
+
+function VaultList({
+  entries,
+  folders,
+  selectedId,
+  sort,
+  onSort,
+  onSelect,
+  onCreate,
+  onCopy,
+  onDragStart,
+}: {
+  entries: VaultEntry[];
+  folders: VaultFolder[];
+  selectedId: string | null;
+  sort: SortMode;
+  onSort: (mode: SortMode) => void;
+  onSelect: (entry: VaultEntry) => void;
+  onCreate: () => void;
+  onCopy: (message: string) => void;
+  onDragStart: (entryId: string) => void;
+}) {
+  return (
+    <section className="vault-list-panel" aria-label="Список записей">
+      <div className="list-toolbar">
+        <div>
+          <span>ENTRIES</span>
+          <strong>{entries.length}</strong>
+        </div>
+        <div className="segmented-control" aria-label="Вид списка">
+          <button className="active">Компактно</button>
+          <button>Расширенно</button>
+        </div>
+        <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)} aria-label="Сортировка">
+          <option value="updatedAt">Недавние</option>
+          <option value="title">А-Я</option>
+          <option value="createdAt">Новые</option>
+          <option value="usedCount">Частые</option>
+        </select>
+      </div>
+      {entries.length === 0 ? (
+        <section className="vault-empty-state">
+          <CipherBackground variant="empty" />
+          <KeyRound size={34} />
+          <h2>Записей пока нет</h2>
+          <p>Создайте первую запись или импортируйте данные в настройках.</p>
+          <button className="primary" onClick={onCreate}><Plus size={17} />Создать запись</button>
+        </section>
+      ) : (
+        <div className="vault-entry-list">
+          {entries.map((entry) => (
+            <VaultEntryRow key={entry.id} entry={entry} folders={folders} selected={entry.id === selectedId} onSelect={onSelect} onCopy={onCopy} onDragStart={onDragStart} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EntryDetailsPanel({
+  entry,
+  vault,
+  onEdit,
+  onCreate,
+  onCopy,
+}: {
+  entry: VaultEntry | null;
+  vault: VaultState;
+  onEdit: (entry: VaultEntry) => void;
+  onCreate: () => void;
+  onCopy: (message: string) => void;
+}) {
+  const stats = vaultSecurityStats(vault.entries);
+  if (!entry) {
+    return (
+      <aside className="entry-details-panel empty" aria-label="Обзор безопасности">
+        <CipherBackground variant="empty" />
+        <ShieldCheck size={34} />
+        <h2>Выберите запись</h2>
+        <p>Справа появятся логин, пароль, сайт, заметки и быстрые действия.</p>
+        <div className="security-grid">
+          <div><span>ENTRIES</span><strong>{vault.entries.length}</strong></div>
+          <div><span>WEAK</span><strong>{stats.weak}</strong></div>
+          <div><span>REUSED</span><strong>{stats.duplicate}</strong></div>
+          <div><span>OLD</span><strong>{stats.old}</strong></div>
+        </div>
+        <button className="primary" onClick={onCreate}><Plus size={17} />Новая запись</button>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="entry-details-panel" aria-label="Просмотр записи">
+      <div className="entry-details-head">
+        <EntryIcon entry={entry} size="large" />
+        <div>
+          <span>{entryFolderName(entry, vault.folders)}</span>
+          <h2>{entry.title || "Новая запись"}</h2>
+          <p>{entry.url || "Сайт не указан"}</p>
+        </div>
+        <button className="icon-button" aria-label="Избранное"><Heart size={17} /></button>
+      </div>
+
+      <div className="details-fields">
+        <div className="detail-field">
+          <span>Логин</span>
+          <strong>{entry.username || "Не указан"}</strong>
+          <CopyButton value={entry.username} label="Логин" onCopied={onCopy} />
+        </div>
+        <div className="detail-field">
+          <span>Пароль</span>
+          <strong className="password-dots">{entry.password ? "•••• •••• ••••" : "Не указан"}</strong>
+          <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
+        </div>
+        <div className="detail-field">
+          <span>URL</span>
+          <strong>{entry.url || "Не указан"}</strong>
+          <button className="copy-action" disabled={!entry.url} onClick={() => entry.url && window.open(entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, "_blank")}>
+            <Globe size={15} />
+            Открыть
+          </button>
+        </div>
+        {entry.notes && (
+          <div className="detail-field note">
+            <span>Заметки</span>
+            <p>{entry.notes}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="entry-metadata">
+        <div><span>LAST MODIFIED</span><strong>{new Date(entry.updatedAt).toLocaleString("ru-RU")}</strong></div>
+        <div><span>CREATED</span><strong>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</strong></div>
+        <div><span>PASSWORD AGE</span><strong>{passwordAgeDays(entry)} дн.</strong></div>
+        <div><span>SECURITY</span><strong>{passwordRisk(entry, vault.entries)}</strong></div>
+      </div>
+
+      <div className="details-actions">
+        <button onClick={() => entry.url && window.open(entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, "_blank")} disabled={!entry.url}><Globe size={16} />Сайт</button>
+        <CopyButton value={entry.username} label="Логин" onCopied={onCopy} />
+        <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
+        <button className="primary" onClick={() => onEdit(entry)}><PanelRight size={16} />Редактировать</button>
+      </div>
+    </aside>
+  );
+}
+
+function SecurityOverview({ vault }: { vault: VaultState }) {
+  const stats = vaultSecurityStats(vault.entries);
+  const total = Math.max(vault.entries.length, 1);
+  const score = Math.max(0, Math.round(100 - ((stats.weak + stats.duplicate + stats.old) / total) * 35));
+  return (
+    <section className="security-overview">
+      <div className="overview-meter">
+        <span>SECURITY SCORE</span>
+        <strong>{score}%</strong>
+        <div><i style={{ width: `${score}%` }} /></div>
+      </div>
+      <div className="overview-segments">
+        <div><span>Всего</span><strong>{vault.entries.length}</strong></div>
+        <div><span>Слабые</span><strong>{stats.weak}</strong></div>
+        <div><span>Повторы</span><strong>{stats.duplicate}</strong></div>
+        <div><span>Старые</span><strong>{stats.old}</strong></div>
+        <div><span>Устройства</span><strong>{Capacitor.isNativePlatform() ? 1 : 1}</strong></div>
+        <div><span>Синхронизация</span><strong>{vault.settings.sync.lastSyncAt ? "OK" : "LOCAL"}</strong></div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardPanel({ vault, onCreate, onSection }: { vault: VaultState; onCreate: () => void; onSection: (section: VaultSection) => void }) {
+  const recent = [...vault.entries].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
+  return (
+    <section className="dashboard-panel">
+      <SecurityOverview vault={vault} />
+      <div className="dashboard-grid">
+        <section>
+          <h2>Недавно изменены</h2>
+          {recent.length === 0 ? <p className="muted">Пока нет записей.</p> : recent.map((entry) => <div className="recent-line" key={entry.id}><EntryIcon entry={entry} /><span>{entry.title || "Новая запись"}</span><small>{new Date(entry.updatedAt).toLocaleDateString("ru-RU")}</small></div>)}
+        </section>
+        <section>
+          <h2>Быстрые действия</h2>
+          <button onClick={onCreate}><Plus size={16} />Новая запись</button>
+          <button onClick={() => onSection("sync")}><RefreshCcw size={16} />Синхронизация</button>
+          <button onClick={() => onSection("security")}><ShieldCheck size={16} />Проверка безопасности</button>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+
 export default function App() {
   const [booting, setBooting] = useState(true);
   const [vault, setVault] = useState<VaultState | null>(null);
@@ -1550,6 +2102,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("updatedAt");
   const [status, setStatus] = useState("");
+  const [activeSection, setActiveSection] = useState<VaultSection>("overview");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<VaultEntry | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [skipLock, setSkipLock] = useState(() => localStorage.getItem(optionalLockKey) === "1");
   const [biometricUnlock, setBiometricUnlock] = useState(() => localStorage.getItem(biometricUnlockKey) === "1");
@@ -1621,6 +2176,40 @@ export default function App() {
       });
   }, [query, selectedFolder, sort, vault]);
 
+  useEffect(() => {
+    function handleShortcuts(event: KeyboardEvent) {
+      if (!vault) return;
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "n") {
+        event.preventDefault();
+        createEntry();
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "l") {
+        event.preventDefault();
+        lockVault();
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "f") {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>(".command-search input")?.focus();
+      }
+      if (event.key === "Escape") {
+        setCommandPaletteOpen(false);
+        setEditingEntry(null);
+        setSettingsOpen(false);
+      }
+      if (event.key === "Enter" && !selectedEntry && filteredEntries[0]) {
+        setSelectedEntry(filteredEntries[0]);
+      }
+    }
+
+    window.addEventListener("keydown", handleShortcuts);
+    return () => window.removeEventListener("keydown", handleShortcuts);
+  }, [filteredEntries, selectedEntry, vault]);
+
   if (booting) return <Splash />;
 
   if (!vault) {
@@ -1629,7 +2218,19 @@ export default function App() {
 
   function createEntry() {
     if (!vault) return;
-    setSelectedEntry(newEntry(selectedFolder || vault.folders[0].id));
+    const entry = newEntry(selectedFolder || vault.folders[0].id);
+    setSelectedEntry(entry);
+    setEditingEntry(entry);
+    setActiveSection("vault");
+  }
+
+  function lockVault() {
+    setManualLock(true);
+    setVault(null);
+    setMasterPassword("");
+    setSelectedEntry(null);
+    setEditingEntry(null);
+    setCommandPaletteOpen(false);
   }
 
   function moveEntryToFolder(entryId: string, folderId: string) {
@@ -1647,127 +2248,130 @@ export default function App() {
     persist(nextVault, "Запись перемещена");
   }
 
-  return (
-    <main className="app-shell">
-      <div className="cipher-grid" />
-      <section className="app-frame">
-        <header className="topbar">
-          <div className="brand">
-            <img src="./pandoralogo.png" alt="Pandora" />
-            <div>
-              <span>PANDORA</span>
-              <strong>Хранилище</strong>
-            </div>
-          </div>
-          <div className="top-actions">
-            {status && (
-              <span className="status">
-                <Check size={14} />
-                {status}
-              </span>
-            )}
-            <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Настройки" title="Настройки">
-              <Settings size={18} />
-            </button>
-            <button
-              className="icon-button"
-              onClick={() => {
-                setManualLock(true);
-                setVault(null);
-                setMasterPassword("");
-                setSelectedEntry(null);
-              }}
-              aria-label="Заблокировать"
-              title="Заблокировать"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
-        </header>
+  const selectSection = (section: VaultSection) => {
+    if (section === "settings") {
+      setSettingsOpen(true);
+      return;
+    }
+    setActiveSection(section);
+  };
 
-        <section className="workspace-hero">
-          <div>
-            <span>Хранилище</span>
-            <h1>Пароли</h1>
-            <p>
-              {vault.folders.find((folder) => folder.id === selectedFolder)?.name || "Все записи"} · {filteredEntries.length}
-            </p>
-          </div>
-          <button className="primary hero-add" onClick={createEntry}>
-            <Plus size={18} />
-            Новая запись
-          </button>
-        </section>
+  const createFolder = async (name: string) => {
+    if (!name.trim()) return;
+    const rootId = vault.folders[0].id;
+    const normalizedName = name.trim();
+    const duplicate = vault.folders.some((folder) => folder.parentId === rootId && folder.name.trim().toLowerCase() === normalizedName.toLowerCase());
+    if (duplicate) {
+      window.alert("Папка с таким именем уже есть");
+      return;
+    }
+    const folder = { id: crypto.randomUUID(), name: normalizedName, parentId: rootId, createdAt: now() };
+    await persist({ ...vault, folders: [...vault.folders, folder] }, "Папка создана");
+    setSelectedFolder(folder.id);
+    setSelectedEntry(null);
+    setActiveSection("vault");
+  };
 
-        <FolderStrip
-          folders={vault.folders}
-          entries={vault.entries}
-          selectedFolder={selectedFolder}
-          onSelect={(id) => {
-            setSelectedFolder(id);
-            setSelectedEntry(null);
-          }}
-          onDropEntry={moveEntryToFolder}
-          onCreate={async (name) => {
-            if (!name.trim()) return;
-            const rootId = vault.folders[0].id;
-            const normalizedName = name.trim();
-            const duplicate = vault.folders.some(
-              (folder) => folder.parentId === rootId && folder.name.trim().toLowerCase() === normalizedName.toLowerCase(),
-            );
-            if (duplicate) {
-              window.alert("\u041f\u0430\u043f\u043a\u0430 \u0441 \u0442\u0430\u043a\u0438\u043c \u0438\u043c\u0435\u043d\u0435\u043c \u0443\u0436\u0435 \u0435\u0441\u0442\u044c");
-              return;
-            }
-            const folder = { id: crypto.randomUUID(), name: normalizedName, parentId: rootId, createdAt: now() };
-            await persist(
-              { ...vault, folders: [...vault.folders, folder] },
-              "Папка создана",
-            );
-            setSelectedFolder(folder.id);
-            setSelectedEntry(null);
-          }}
-        />
-
-        <section className="search-row">
-          <div className="search-box">
-            <Search size={17} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по записям" />
-          </div>
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)} aria-label="Сортировка">
-            <option value="updatedAt">Недавние</option>
-            <option value="title">А-Я</option>
-            <option value="createdAt">Новые</option>
-            <option value="usedCount">Частые</option>
-          </select>
-        </section>
-
-        <EntryList
+  const mainContent =
+    activeSection === "overview" ? (
+      <DashboardPanel vault={vault} onCreate={createEntry} onSection={selectSection} />
+    ) : activeSection === "security" ? (
+      <section className="section-workspace"><SecurityOverview vault={vault} /><p className="muted">Проверка выполняется локально. Пароли не отправляются во внешние сервисы.</p></section>
+    ) : activeSection === "devices" ? (
+      <section className="section-workspace"><h2>Устройства</h2><p className="muted">Текущее устройство: {Capacitor.isNativePlatform() ? "Android" : "Windows"}. История устройств будет расширена поверх журнала синхронизации.</p></section>
+    ) : activeSection === "sync" ? (
+      <section className="section-workspace"><h2>Синхронизация</h2><p className="muted">Koofr/WebDAV и локальный Wi‑Fi обмен доступны в настройках.</p><button onClick={() => setSettingsOpen(true)}><RefreshCcw size={16} />Открыть настройки синхронизации</button></section>
+    ) : activeSection === "generator" ? (
+      <section className="section-workspace"><h2>Генератор</h2><p className="muted">Генератор паролей также доступен при создании или редактировании записи.</p><button onClick={createEntry}><Plus size={16} />Создать запись с генератором</button></section>
+    ) : activeSection === "trash" ? (
+      <section className="section-workspace"><h2>Корзина</h2><p className="muted">Удаление сейчас выполняется без корзины. Раздел подготовлен для следующего этапа.</p></section>
+    ) : (
+      <>
+        <div className="folder-panel">
+          <FolderStrip
+            folders={vault.folders}
+            entries={vault.entries}
+            selectedFolder={selectedFolder}
+            onSelect={(id) => {
+              setSelectedFolder(id);
+              setSelectedEntry(null);
+              setActiveSection("vault");
+            }}
+            onDropEntry={moveEntryToFolder}
+            onCreate={createFolder}
+          />
+        </div>
+        <VaultList
           entries={filteredEntries}
+          folders={vault.folders}
           selectedId={selectedEntry?.id ?? null}
+          sort={sort}
+          onSort={setSort}
           onSelect={setSelectedEntry}
           onCreate={createEntry}
+          onCopy={setStatus}
           onDragStart={() => setSelectedEntry(null)}
         />
-      </section>
+      </>
+    );
 
-      {selectedEntry && (
+  return (
+    <main className="cipher-app-shell">
+      <CipherBackground />
+      <NavigationRail active={activeSection} vault={vault} onSelect={selectSection} onLock={lockVault} />
+      <section className="cipher-workspace">
+        <CommandBar active={activeSection} query={query} status={status} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
+        <div className={activeSection === "overview" ? "workspace-grid overview-mode" : "workspace-grid"}>
+          <div className="workspace-primary">{mainContent}</div>
+          <EntryDetailsPanel entry={selectedEntry} vault={vault} onEdit={setEditingEntry} onCreate={createEntry} onCopy={setStatus} />
+        </div>
+      </section>
+      <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
+        <button className={activeSection === "vault" ? "active" : ""} onClick={() => selectSection("vault")}><KeyRound size={18} /><span>Хранилище</span></button>
+        <button className={activeSection === "favorites" ? "active" : ""} onClick={() => selectSection("favorites")}><Star size={18} /><span>Избранное</span></button>
+        <button className={activeSection === "generator" ? "active" : ""} onClick={() => selectSection("generator")}><Shuffle size={18} /><span>Генератор</span></button>
+        <button className={activeSection === "security" ? "active" : ""} onClick={() => selectSection("security")}><ShieldCheck size={18} /><span>Защита</span></button>
+        <button onClick={() => setSettingsOpen(true)}><Settings size={18} /><span>Настройки</span></button>
+      </nav>
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        entries={vault.entries}
+        folders={vault.folders}
+        onClose={() => setCommandPaletteOpen(false)}
+        onCreate={createEntry}
+        onSelectEntry={(entry) => {
+          setSelectedEntry(entry);
+          setActiveSection("vault");
+        }}
+        onSelectFolder={(folderId) => {
+          setSelectedFolder(folderId);
+          setActiveSection("vault");
+        }}
+        onSection={selectSection}
+        onLock={lockVault}
+      />
+
+      {editingEntry && (
         <>
-          <button className="scrim" aria-label="Закрыть редактор" onClick={() => setSelectedEntry(null)} />
+          <button className="scrim" aria-label="Закрыть редактор" onClick={() => setEditingEntry(null)} />
           <EntryEditor
-            entry={selectedEntry}
+            entry={editingEntry}
             folders={vault.folders}
-            onClose={() => setSelectedEntry(null)}
+            onClose={() => setEditingEntry(null)}
             onDelete={(id) => {
               if (!vault || !window.confirm("Удалить запись?")) return;
               const nextVault = { ...vault, entries: vault.entries.filter((entry) => entry.id !== id) };
               setSelectedEntry(null);
+              setEditingEntry(null);
               persist(nextVault, "Запись удалена");
             }}
             onSave={(entry) => {
               if (!vault) return;
               const nextVault = saveEntry(vault, entry);
-              setSelectedEntry(null);
+              const saved = nextVault.entries.find((item) => item.id === entry.id) ?? entry;
+              setSelectedEntry(saved);
+              setEditingEntry(null);
               persist(nextVault, "Запись сохранена");
             }}
           />
