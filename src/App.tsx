@@ -1609,11 +1609,11 @@ export default function App() {
 
   const filteredEntries = useMemo(() => {
     if (!vault) return [];
-    const lower = query.toLowerCase();
+    const lower = query.trim().toLocaleLowerCase("ru-RU");
     const visibleFolderIds = selectedFolder ? descendantFolderIds(selectedFolder, vault.folders) : null;
     return vault.entries
       .filter((entry) => !visibleFolderIds || visibleFolderIds.has(entry.folderId))
-      .filter((entry) => [entry.title, entry.username, entry.url, entry.notes].join(" ").toLowerCase().includes(lower))
+      .filter((entry) => !lower || [entry.title, entry.username, entry.url, entry.notes].join(" ").toLocaleLowerCase("ru-RU").includes(lower))
       .sort((first, second) => {
         if (sort === "title") return first.title.localeCompare(second.title, "ru");
         if (sort === "usedCount") return second.usedCount - first.usedCount;
@@ -1685,23 +1685,18 @@ export default function App() {
           </div>
         </header>
 
-        <section className="vault-summary" aria-label="Состояние хранилища">
+        <section className="workspace-hero">
           <div>
-            <span>ENTRIES</span>
-            <strong>{vault.entries.length}</strong>
+            <span>Хранилище</span>
+            <h1>Пароли</h1>
+            <p>
+              {vault.folders.find((folder) => folder.id === selectedFolder)?.name || "Все записи"} · {filteredEntries.length}
+            </p>
           </div>
-          <div>
-            <span>FOLDERS</span>
-            <strong>{Math.max(vault.folders.length - 1, 0)}</strong>
-          </div>
-          <div>
-            <span>ACTIVE FOLDER</span>
-            <strong>{vault.folders.find((folder) => folder.id === selectedFolder)?.name || "Все"}</strong>
-          </div>
-          <div>
-            <span>CRYPTO</span>
-            <strong>AES-256-GCM</strong>
-          </div>
+          <button className="primary hero-add" onClick={createEntry}>
+            <Plus size={18} />
+            Новая запись
+          </button>
         </section>
 
         <FolderStrip
@@ -1745,10 +1740,6 @@ export default function App() {
             <option value="createdAt">Новые</option>
             <option value="usedCount">Частые</option>
           </select>
-          <button className="primary add-button" onClick={createEntry}>
-            <Plus size={18} />
-            Новая
-          </button>
         </section>
 
         <EntryList
