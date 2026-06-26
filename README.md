@@ -1,91 +1,110 @@
 # Pandora
 
-Pandora is a local-first password manager for Windows and Android. The project is built as a desktop application through Electron and as an Android application through Capacitor. The interface is Russian-first and follows a monochrome dark minimalist style with retro terminal and cryptography-inspired UI details.
+> Локальный зашифрованный менеджер паролей для Windows и Android.
 
-> Status: early prototype. Do not treat this repository as production-ready password manager software yet.
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Android-f2f2f2?style=for-the-badge&labelColor=050505)
+![Stack](https://img.shields.io/badge/stack-React%20%2B%20Electron%20%2B%20Capacitor-f2f2f2?style=for-the-badge&labelColor=050505)
+![Status](https://img.shields.io/badge/status-early%20release-f2f2f2?style=for-the-badge&labelColor=050505)
 
-## Features
+Pandora — это локальный менеджер паролей с зашифрованным хранилищем, русским интерфейсом, приложением для Windows, APK для Android и синхронизацией между устройствами через Koofr/WebDAV. Проект сделан в стиле **Dark Minimalist / Cryptography / Retro Terminal**: спокойный монохромный интерфейс без перегруженных экранов.
 
-- Encrypted local vault protected by a master password.
-- Windows desktop app with installer and portable build targets.
-- Android APK build through Capacitor.
-- Russian interface.
-- Empty vault by default, without demo records.
-- Folder strip for organizing entries.
-- Entry editor with title, login, URL, password, notes, folder and icon.
-- Password generator inside the entry editor.
-- Optional app unlock skip on a trusted local device.
-- Theme settings.
-- WebDAV/Koofr sync prototype.
-- Wi-Fi local transfer prototype between Windows and Android.
-- CSV import for Google Password Manager exports.
+> Важно: проект находится на ранней стадии. Не считайте Pandora прошедшим профессиональный security audit продуктом.
 
-## Tech Stack
+## Скачать
 
-- React 18
-- TypeScript
-- Vite
-- Electron
-- Capacitor Android
-- Web Crypto API
-- Vitest
+Актуальные сборки публикуются в разделе **Releases**:
 
-## Security Model
+- `Pandora Setup 0.1.0.exe` — установщик Windows.
+- `Pandora 0.1.0.exe` — portable-версия Windows.
+- `app-debug.apk` — Android APK.
 
-Vault data is encrypted locally before it is saved or synchronized.
+## Возможности
 
-Current crypto implementation:
+- Локальное зашифрованное хранилище паролей.
+- Мастер-пароль с минимальной длиной 4 символа.
+- Windows-приложение через Electron.
+- Android-приложение через Capacitor.
+- Русский интерфейс по умолчанию.
+- Папки для организации записей.
+- Поиск, сортировка и быстрый просмотр записей.
+- Создание, редактирование, удаление и восстановление записей через корзину.
+- Просмотр пароля через кнопку-глаз и копирование логина/пароля.
+- Генератор паролей внутри формы создания/редактирования записи.
+- Иконки записей: авто-подхват favicon по сайту, загрузка файла, URL картинки или вставка через буфер обмена.
+- Темы оформления: Pandora Cipher, Terminal Green, Paper Key.
+- Koofr/WebDAV синхронизация между Windows и Android.
+- Дополнительный локальный Wi-Fi обмен.
+- Отладочные логи, которые можно экспортировать и отправить для диагностики.
+- Биометрический вход на Android, если устройство и системные настройки это поддерживают.
+- CSV импорт для переносов из других менеджеров.
 
-- PBKDF2-SHA-256
-- 250,000 iterations
-- AES-GCM 256-bit
-- Random salt and IV per encryption
+## Безопасность
 
-Important limitations:
+Pandora шифрует данные локально перед сохранением и синхронизацией.
 
-- This project has not had an external security audit.
-- Sync is still under active debugging.
-- Browser/WebView favicon loading is best-effort and should not be considered security-sensitive.
-- Master password recovery is not implemented.
+Текущая криптография:
 
-## Project Structure
+- PBKDF2-SHA-256;
+- 250 000 итераций;
+- AES-GCM 256-bit;
+- случайные salt и IV при шифровании.
 
-```text
-android/              Capacitor Android project
-build/                Windows app icon
-electron/             Electron main/preload processes
-public/               Static app assets
-src/                  React app and shared logic
-src/lib/cryptoVault.ts
-src/lib/syncEngine.ts
-src/lib/webdavSync.ts
-src/types/vault.ts
-```
+Что важно понимать:
 
-## Development
+- мастер-пароль не восстанавливается;
+- без мастер-пароля расшифровать хранилище нельзя;
+- синхронизация передаёт зашифрованный `.pandora` файл;
+- пароли не должны попадать в логи;
+- проект пока не проходил внешний аудит безопасности.
 
-Install dependencies:
+## Синхронизация
+
+Основной рекомендуемый способ — **Koofr через WebDAV**.
+
+Общий сценарий:
+
+1. Создайте Koofr account.
+2. В Koofr создайте app password: `Account settings -> Preferences -> Password`.
+3. В Pandora укажите WebDAV URL, email Koofr и app password.
+4. Используйте одинаковый мастер-пароль на Windows и Android.
+5. Нажмите синхронизацию на устройстве с актуальными данными.
+6. Нажмите синхронизацию на втором устройстве.
+
+Состояние корзины тоже синхронизируется: удалённая запись попадает в корзину на другом устройстве, пока пользователь не удалит её навсегда.
+
+## Интерфейс
+
+Pandora использует один React-интерфейс, адаптированный под две платформы:
+
+- **Windows**: sidebar, command bar, список записей и правая панель деталей.
+- **Android**: компактный top bar, поиск, папки, список, bottom navigation и bottom sheet для деталей.
+
+Основная цель интерфейса — быстро открыть запись, скопировать логин/пароль и не отвлекаться на лишние панели.
+
+## Сборка из исходников
+
+Требования:
+
+- Node.js;
+- npm;
+- Java 21 для Android-сборки;
+- Android SDK для APK;
+- Windows для сборки `.exe`.
+
+Установка зависимостей:
 
 ```bash
 npm install
 ```
 
-Run checks:
+Проверки:
 
 ```bash
-npm test
+npm test -- --run
 npm run build
 ```
 
-Run the Electron app in development mode:
-
-```bash
-npm run electron:dev
-```
-
-## Build
-
-Windows installer and portable executable:
+Windows installer и portable:
 
 ```bash
 npm run dist:win
@@ -97,62 +116,172 @@ Android debug APK:
 npm run apk:debug
 ```
 
-The Android script expects local Java and Android SDK paths used on the original Windows development machine:
+Android script в `package.json` использует локальные пути Windows-разработчика:
 
 ```text
 JAVA_HOME=C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot
 ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
 ```
 
-Adjust `package.json` if your local paths differ.
+Если у вас другие пути, измените скрипт под свою систему.
 
-## Synchronization
+## Структура проекта
 
-Pandora currently has two sync paths:
+```text
+android/              Capacitor Android project
+build/                Windows icon and build assets
+electron/             Electron main process
+public/               Static assets
+src/                  React app, crypto, sync and storage logic
+src/lib/cryptoVault.ts
+src/lib/syncEngine.ts
+src/lib/webdavSync.ts
+src/types/vault.ts
+```
 
-- Koofr/WebDAV cloud sync
-- local Wi-Fi transfer between Windows and Android
+## Статус проекта
 
-The intended cloud flow is:
+Pandora уже собирается в Windows EXE и Android APK, но остаётся ранним релизом. Перед использованием для критически важных паролей нужен аудит, больше тестов и аккуратная проверка сценариев восстановления/обновления.
 
-1. Configure Koofr WebDAV URL, email and app password.
-2. Use the same master password on both devices.
-3. Press `Синхронизировать` on the device that has current data.
-4. Press `Синхронизировать` on the second device.
+---
 
-Current known issue:
+# Pandora
 
-Koofr confirms that `pandora-vault.pandora` is updated and contains one encrypted entry, but the second device still does not display the synchronized entry after download/merge. The sync subsystem has been rewritten to use a shared sync engine, but the end-to-end bug is still unresolved and needs deeper debugging on real Windows + Android installs.
+> A local encrypted password manager for Windows and Android.
 
-## Known Problem For Investigation
+Pandora is a local-first password manager with an encrypted vault, Windows desktop builds, Android APK builds and cross-device sync through Koofr/WebDAV. The interface follows a **Dark Minimalist / Cryptography / Retro Terminal** direction: monochrome, focused and intentionally quiet.
 
-The most important unresolved bug is cross-device sync:
+> Important: Pandora is an early release. Do not treat it as professionally audited password manager software yet.
 
-- Phone creates a test entry.
-- Phone syncs to Koofr/WebDAV.
-- Koofr file `pandora-vault.pandora` is updated.
-- The file contains a valid encrypted Pandora payload and reports one entry in sync metadata in the newer format.
-- Windows downloads/syncs from Koofr without obvious transport failure.
-- The entry still does not appear in the Windows UI.
-- Reverse direction also fails from Windows to Android.
+## Download
 
-Likely areas to inspect:
+Current builds are published in **Releases**:
 
-- whether both installed apps are actually running the same build and sync format;
-- whether `readSyncPayload` decrypts the downloaded payload successfully on device;
-- whether `mergeSyncedVaults` maps remote root folders into the local root folder correctly;
-- whether `onImportVault` persists the merged vault and updates selected folder/query state correctly;
-- whether the UI filters hide the imported entry because of selected folder or search state;
-- whether Capacitor localStorage origin differs after app reinstall/update;
-- whether WebDAV cache or stale file reads happen on Android or Windows.
+- `Pandora Setup 0.1.0.exe` — Windows installer.
+- `Pandora 0.1.0.exe` — Windows portable build.
+- `app-debug.apk` — Android APK.
 
-## Repository Notes
+## Features
 
-Generated output is intentionally ignored:
+- Encrypted local password vault.
+- Master password with a 4-character minimum.
+- Windows app through Electron.
+- Android app through Capacitor.
+- Russian-first interface.
+- Folders for organizing entries.
+- Search, sorting and quick entry preview.
+- Create, edit, soft-delete, restore and permanently delete entries.
+- Password reveal button and login/password copy actions.
+- Password generator inside the entry editor.
+- Entry icons through favicon auto-loading, local file upload, image URL or clipboard paste.
+- Themes: Pandora Cipher, Terminal Green, Paper Key.
+- Koofr/WebDAV sync between Windows and Android.
+- Optional local Wi-Fi transfer.
+- Exportable debug logs for troubleshooting.
+- Android biometric unlock when supported by the device.
+- CSV import for migration from other managers.
 
-- `node_modules/`
-- `dist/`
-- `release/`
-- Android Gradle build folders
+## Security
 
-No GitHub Release is created for this prototype state.
+Pandora encrypts vault data locally before saving or syncing it.
+
+Current crypto implementation:
+
+- PBKDF2-SHA-256;
+- 250,000 iterations;
+- AES-GCM 256-bit;
+- random salt and IV for encryption.
+
+Important notes:
+
+- there is no master password recovery;
+- the vault cannot be decrypted without the master password;
+- sync uploads an encrypted `.pandora` file;
+- passwords should never be written to logs;
+- the project has not passed an external security audit yet.
+
+## Sync
+
+The recommended sync method is **Koofr through WebDAV**.
+
+General flow:
+
+1. Create a Koofr account.
+2. Create an app password in Koofr: `Account settings -> Preferences -> Password`.
+3. Enter the WebDAV URL, Koofr email and app password in Pandora.
+4. Use the same master password on Windows and Android.
+5. Sync from the device that has the newest data.
+6. Sync from the second device.
+
+Trash state is synced too: a deleted entry appears in trash on the other device until it is permanently deleted.
+
+## Interface
+
+Pandora uses one React interface adapted for both platforms:
+
+- **Windows**: sidebar, command bar, entry list and persistent details panel.
+- **Android**: compact top bar, search, folders, list, bottom navigation and bottom sheet details.
+
+The product goal is simple: open an entry quickly, copy login/password and avoid unnecessary UI noise.
+
+## Build From Source
+
+Requirements:
+
+- Node.js;
+- npm;
+- Java 21 for Android builds;
+- Android SDK for APK builds;
+- Windows for `.exe` builds.
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run checks:
+
+```bash
+npm test -- --run
+npm run build
+```
+
+Build Windows installer and portable app:
+
+```bash
+npm run dist:win
+```
+
+Build Android debug APK:
+
+```bash
+npm run apk:debug
+```
+
+The Android script in `package.json` uses local Windows development paths:
+
+```text
+JAVA_HOME=C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot
+ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
+```
+
+Change the script if your paths are different.
+
+## Project Structure
+
+```text
+android/              Capacitor Android project
+build/                Windows icon and build assets
+electron/             Electron main process
+public/               Static assets
+src/                  React app, crypto, sync and storage logic
+src/lib/cryptoVault.ts
+src/lib/syncEngine.ts
+src/lib/webdavSync.ts
+src/types/vault.ts
+```
+
+## Project Status
+
+Pandora already builds as a Windows EXE and Android APK, but it is still an early release. Before using it for critical passwords, it needs a security audit, broader testing and careful validation of recovery/update scenarios.
