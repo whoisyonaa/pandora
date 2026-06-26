@@ -979,6 +979,16 @@ function SettingsPanel({
     .slice(-8)
     .map((entry) => `${new Date(entry.at).toLocaleTimeString("ru-RU")} ${entry.level.toUpperCase()} ${entry.scope}: ${entry.message}`)
     .join("\n");
+  const [settingsTab, setSettingsTab] = useState<"general" | "appearance" | "cloud" | "wifi" | "files" | "debug" | "danger">("general");
+  const settingsTabs: Array<{ id: typeof settingsTab; label: string }> = [
+    { id: "general", label: "Основные" },
+    { id: "appearance", label: "Внешний вид" },
+    { id: "cloud", label: "Облако" },
+    { id: "wifi", label: "Wi-Fi" },
+    { id: "files", label: "Импорт" },
+    { id: "debug", label: "Логи" },
+    { id: "danger", label: "Сброс" },
+  ];
 
   useEffect(() => window.pandoraSync?.onReceived(() => setIncomingReady(true)), []);
 
@@ -1363,7 +1373,16 @@ function SettingsPanel({
         </button>
       </div>
 
-      <section className="settings-section">
+      <nav className="settings-tabs" aria-label="Разделы настроек">
+        {settingsTabs.map((tab) => (
+          <button key={tab.id} className={settingsTab === tab.id ? "settings-tab active" : "settings-tab"} onClick={() => setSettingsTab(tab.id)}>
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="settings-content">
+      <section className="settings-section" hidden={settingsTab !== "general"}>
         <h3>Вход</h3>
         <label className="switch">
           <input type="checkbox" checked={skipLock} onChange={(event) => onSkipLockChange(event.target.checked)} />
@@ -1394,7 +1413,7 @@ function SettingsPanel({
         </label>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "appearance"}>
         <h3>Тема и язык</h3>
         <div className="theme-grid">
           {themes.map((theme) => (
@@ -1416,7 +1435,7 @@ function SettingsPanel({
         </label>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "cloud"}>
         <h3>Облачная синхронизация</h3>
         <p className="muted">
           Основной вариант: Koofr через WebDAV. Нужен бесплатный аккаунт Koofr и пароль приложения из настроек Koofr.
@@ -1491,7 +1510,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "wifi"}>
         <h3>Синхронизация по Wi-Fi</h3>
         <p className="muted">
           Дополнительный вариант без аккаунтов: устройства должны быть в одной Wi-Fi сети. Это не замена облачной
@@ -1577,7 +1596,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "files"}>
         <h3>Файл вручную</h3>
         <p className="muted">Резервный способ: экспортируйте файл на одном устройстве и импортируйте на другом.</p>
         <div className="button-row">
@@ -1593,7 +1612,7 @@ function SettingsPanel({
         <input ref={fileInputRef} className="hidden-input" type="file" accept=".pandora,application/json" onChange={importSyncFile} />
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "files"}>
         <h3>Импорт CSV</h3>
         <textarea value={csv} onChange={(event) => setCsv(event.target.value)} placeholder="name,url,username,password" />
         <button onClick={importCsv} disabled={!csv.trim()}>
@@ -1602,7 +1621,7 @@ function SettingsPanel({
         </button>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" hidden={settingsTab !== "debug"}>
         <h3>Диагностика</h3>
         <p className="muted">Журнал не содержит мастер-пароль и содержимое хранилища. После ошибки синхронизации скачайте или скопируйте его и отправьте в чат.</p>
         <div className="debug-console">
@@ -1625,13 +1644,14 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="settings-section danger-zone">
+      <section className="settings-section danger-zone" hidden={settingsTab !== "danger"}>
         <h3>Опасная зона</h3>
         <button className="danger" onClick={onReset}>
           <Trash2 size={16} />
           Удалить локальные данные
         </button>
       </section>
+      </div>
     </aside>
   );
 }
