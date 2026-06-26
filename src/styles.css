@@ -1474,3 +1474,388 @@ label {
     border-radius: 8px 8px 0 0;
   }
 }
+
+/* Pandora interface rebuild v2: card-first monochrome layout */
+body {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.07), transparent 280px),
+    radial-gradient(circle at 100% 18%, rgba(255, 255, 255, 0.035), transparent 260px),
+    #030303;
+}
+
+.cipher-grid {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1.6px),
+    linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.024) 1px, transparent 1px);
+  background-size: 14px 14px, 72px 72px, 72px 72px;
+  mask-image: radial-gradient(circle at 50% 16%, rgba(0, 0, 0, 0.54), transparent 58%);
+  opacity: 0.34;
+}
+
+.app-shell {
+  padding: 28px;
+}
+
+.app-frame {
+  width: min(820px, 100%);
+  border: 0;
+  border-radius: 34px;
+  background: linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(5, 5, 5, 0.98));
+  box-shadow:
+    0 36px 120px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.topbar {
+  min-height: 84px;
+  padding: 24px 28px 8px;
+}
+
+.brand img {
+  width: 52px;
+  border-radius: 18px;
+}
+
+.brand span {
+  color: #bdbdb8;
+}
+
+.brand strong {
+  color: var(--text);
+  font-size: 20px;
+}
+
+.icon-button {
+  width: 54px;
+  min-height: 54px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.workspace-hero {
+  position: relative;
+  min-height: 228px;
+  align-items: flex-end;
+  margin: 18px 28px 18px;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 32px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.075), transparent 48%),
+    #151515;
+  overflow: hidden;
+}
+
+.workspace-hero::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 190px;
+  height: 76px;
+  opacity: 0.36;
+  background:
+    repeating-linear-gradient(90deg, #f3f3ef 0 8px, transparent 8px 14px),
+    repeating-linear-gradient(0deg, transparent 0 13px, rgba(255, 255, 255, 0.45) 13px 14px);
+  mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent);
+}
+
+.workspace-hero::after {
+  content: "";
+  position: absolute;
+  right: 34px;
+  bottom: 30px;
+  width: 118px;
+  height: 118px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 2px, transparent 3px) 0 0 / 16px 16px,
+    rgba(255, 255, 255, 0.035);
+}
+
+.workspace-hero > div,
+.workspace-hero .hero-add {
+  position: relative;
+  z-index: 1;
+}
+
+.workspace-hero span {
+  color: #aaaaa5;
+  font-size: 12px;
+}
+
+.workspace-hero h1 {
+  font-size: clamp(58px, 9vw, 82px);
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+}
+
+.workspace-hero p {
+  color: #b8b8b2;
+  font-size: 18px;
+}
+
+.hero-add {
+  min-width: 164px;
+  min-height: 54px;
+  border-radius: 999px;
+  background: #f3f3ef;
+  color: #050505;
+}
+
+.folder-strip {
+  padding: 0 28px 16px;
+}
+
+.folder-chip,
+.folder-add,
+.folder-create input {
+  min-height: 48px;
+  border-radius: 18px;
+}
+
+.folder-chip {
+  padding: 0 18px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.folder-chip.active {
+  background: #f3f3ef;
+}
+
+.folder-add {
+  width: 48px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.search-row {
+  margin: 0 28px 18px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.search-box {
+  border: 0;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.search-row select {
+  border: 0;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.notes-list {
+  display: grid;
+  gap: 14px;
+  padding: 0 28px 30px;
+}
+
+.note-row {
+  min-height: 104px;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), transparent 52%),
+    #151515;
+  padding: 18px;
+  cursor: pointer;
+}
+
+.note-row:last-child {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.note-row:hover,
+.note-row.active {
+  border-color: rgba(255, 255, 255, 0.34);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.085), transparent 52%),
+    #1d1d1d;
+}
+
+.entry-icon-preview {
+  width: 58px;
+  border-radius: 18px;
+  background: #0b0b0b;
+}
+
+.entry-icon-preview.has-image {
+  background: #0b0b0b;
+}
+
+.entry-icon-preview.large {
+  width: 64px;
+  border-radius: 20px;
+}
+
+.note-copy strong {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.note-copy small {
+  font-size: 14px;
+}
+
+.note-meta {
+  align-self: start;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.empty-state {
+  min-height: 360px;
+  margin: 0 28px 30px;
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.06), transparent 220px),
+    #111111;
+}
+
+.empty-state h2 {
+  color: #f3f3ef;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.empty-state button {
+  min-height: 54px;
+  border-radius: 18px;
+}
+
+.editor-sheet,
+.settings-drawer,
+.login-panel {
+  border-radius: 28px;
+  background: #121212;
+}
+
+.sheet-head,
+.sheet-actions {
+  padding: 20px;
+}
+
+.form-grid,
+.settings-section {
+  padding: 20px;
+}
+
+@media (max-width: 720px) {
+  body {
+    background: #050505;
+  }
+
+  .app-shell {
+    padding: 0;
+  }
+
+  .app-frame {
+    width: 100%;
+    min-height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .topbar {
+    min-height: 82px;
+    padding: max(20px, env(safe-area-inset-top)) 22px 6px;
+  }
+
+  .brand img {
+    width: 52px;
+  }
+
+  .workspace-hero {
+    min-height: 232px;
+    margin: 16px 22px 18px;
+    padding: 24px;
+    border-radius: 34px;
+  }
+
+  .workspace-hero::before {
+    width: 138px;
+    height: 58px;
+    right: 20px;
+    top: 22px;
+  }
+
+  .workspace-hero::after {
+    display: none;
+  }
+
+  .workspace-hero h1 {
+    font-size: clamp(54px, 15vw, 68px);
+  }
+
+  .workspace-hero p {
+    font-size: 17px;
+  }
+
+  .workspace-hero .hero-add {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    bottom: auto;
+    width: 58px;
+    min-width: 58px;
+    height: 58px;
+    min-height: 58px;
+  }
+
+  .folder-strip {
+    padding: 0 22px 16px;
+  }
+
+  .search-row {
+    margin: 0 22px 18px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+    border-radius: 26px;
+  }
+
+  .search-box,
+  .search-row select {
+    min-height: 54px;
+    border-radius: 20px;
+  }
+
+  .notes-list {
+    padding: 0 22px 28px;
+  }
+
+  .note-row {
+    min-height: 104px;
+    grid-template-columns: 58px minmax(0, 1fr);
+    border-radius: 28px;
+    padding: 18px;
+  }
+
+  .note-row:hover,
+  .note-row.active {
+    border-radius: 28px;
+  }
+
+  .empty-state {
+    min-height: 380px;
+    margin: 0 22px 28px;
+    border-radius: 32px;
+  }
+
+  .editor-sheet,
+  .settings-drawer {
+    border-radius: 28px 28px 0 0;
+  }
+}
