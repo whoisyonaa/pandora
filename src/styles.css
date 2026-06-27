@@ -1422,10 +1422,49 @@ small {
     bottom: calc(70px + env(safe-area-inset-bottom));
     z-index: 30;
     max-height: calc(100dvh - 164px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 18px;
     border-top: 1px solid var(--border-default);
     border-radius: var(--radius-4) var(--radius-4) 0 0;
     transform: translateY(100%);
     transition: transform var(--motion-panel);
+  }
+
+  .entry-details-head {
+    position: sticky;
+    top: -18px;
+    z-index: 2;
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    gap: 12px;
+    margin: -18px -18px 16px;
+    padding: 18px 18px 12px;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .details-close {
+    display: grid !important;
+    place-items: center;
+    justify-self: end;
+    width: 52px;
+    min-width: 52px;
+    min-height: 52px;
+    background: var(--surface-raised);
+    border-color: var(--border-default);
+  }
+
+  .details-actions {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-bottom: 8px;
+  }
+
+  .details-actions button,
+  .details-actions .copy-action {
+    width: 100%;
+    min-height: 48px;
   }
 
   .entry-details-panel:not(.empty) {
@@ -1587,7 +1626,9 @@ small {
   .editor-sheet {
     inset: auto 0 0 0;
     width: 100%;
-    max-height: 92vh;
+    max-height: min(92dvh, 920px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
@@ -1595,7 +1636,43 @@ small {
   }
 
   .settings-drawer {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .settings-drawer .sheet-head {
+    flex: 0 0 auto;
+  }
+
+  .settings-tabs {
+    flex: 0 0 auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 18px;
+    scrollbar-width: none;
+  }
+
+  .settings-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-tab {
+    flex: 0 0 auto;
+    min-height: 46px;
+    padding: 0 16px;
+  }
+
+  .settings-content {
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .settings-section {
+    padding: 18px;
   }
 
   .form-grid,

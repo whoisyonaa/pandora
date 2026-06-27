@@ -45,9 +45,9 @@
 
 | Платформа | Файл | Назначение |
 | --- | --- | --- |
-| Windows | `Pandora-Setup-0.1.0.exe` | Установщик |
-| Windows | `Pandora-Portable-0.1.0.exe` | Portable-версия |
-| Android | `Pandora-Android-0.1.0-debug.apk` | APK для ручной установки |
+| Windows | `Pandora-Setup-0.1.1.exe` | Установщик |
+| Windows | `Pandora-Portable-0.1.1.exe` | Portable-версия |
+| Android | `Pandora-Android-0.1.1-debug.apk` | APK для ручной установки |
 
 ## Скриншоты
 
@@ -209,9 +209,9 @@ Current builds are available in [GitHub Releases](https://github.com/whoisyonaa/
 
 | Platform | File | Purpose |
 | --- | --- | --- |
-| Windows | `Pandora-Setup-0.1.0.exe` | Installer |
-| Windows | `Pandora-Portable-0.1.0.exe` | Portable build |
-| Android | `Pandora-Android-0.1.0-debug.apk` | APK sideload |
+| Windows | `Pandora-Setup-0.1.1.exe` | Installer |
+| Windows | `Pandora-Portable-0.1.1.exe` | Portable build |
+| Android | `Pandora-Android-0.1.1-debug.apk` | APK sideload |
 
 ## Screenshots
 

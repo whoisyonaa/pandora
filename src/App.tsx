@@ -1916,6 +1916,7 @@ function EntryDetailsPanel({
   entry,
   vault,
   onEdit,
+  onDelete,
   onCreate,
   onCopy,
   onClose,
@@ -1923,6 +1924,7 @@ function EntryDetailsPanel({
   entry: VaultEntry | null;
   vault: VaultState;
   onEdit: (entry: VaultEntry) => void;
+  onDelete: (entryId: string) => void;
   onCreate: () => void;
   onCopy: (message: string) => void;
   onClose?: () => void;
@@ -2010,6 +2012,7 @@ function EntryDetailsPanel({
         <CopyButton value={entry.username} label="Логин" onCopied={onCopy} />
         <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
         <button className="primary" onClick={() => onEdit(entry)}><PanelRight size={16} />Редактировать</button>
+        <button className="danger" onClick={() => onDelete(entry.id)}><Trash2 size={16} />Удалить</button>
       </div>
     </aside>
   );
@@ -2229,7 +2232,6 @@ export default function App() {
   function createEntry() {
     if (!vault) return;
     const entry = newEntry(selectedFolder || vault.folders[0].id);
-    setSelectedEntry(entry);
     setEditingEntry(entry);
     setActiveSection("vault");
   }
@@ -2294,6 +2296,8 @@ export default function App() {
   }
 
   const selectSection = (section: VaultSection) => {
+    setSelectedEntry(null);
+    setEditingEntry(null);
     if (section === "settings") {
       setSettingsOpen(true);
       return;
@@ -2363,7 +2367,18 @@ export default function App() {
         <CommandBar active={activeSection} query={query} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
         <div className={activeSection === "overview" ? "workspace-grid overview-mode" : "workspace-grid"}>
           <div className="workspace-primary">{mainContent}</div>
-          <EntryDetailsPanel entry={selectedEntry} vault={vault} onEdit={setEditingEntry} onCreate={createEntry} onCopy={setStatus} onClose={() => setSelectedEntry(null)} />
+          <EntryDetailsPanel
+            entry={selectedEntry}
+            vault={vault}
+            onEdit={setEditingEntry}
+            onDelete={(entryId) => {
+              if (!window.confirm("Переместить запись в корзину?")) return;
+              moveEntryToTrash(entryId);
+            }}
+            onCreate={createEntry}
+            onCopy={setStatus}
+            onClose={() => setSelectedEntry(null)}
+          />
         </div>
       </section>
       <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
@@ -2394,13 +2409,34 @@ export default function App() {
 
       {editingEntry && (
         <>
-          <button className="scrim" aria-label="Закрыть редактор" onClick={() => setEditingEntry(null)} />
+          <button
+            className="scrim"
+            aria-label="Закрыть редактор"
+            onClick={() => {
+              if (editingEntry && !vault.entries.some((item) => item.id === editingEntry.id) && selectedEntry?.id === editingEntry.id) {
+                setSelectedEntry(null);
+              }
+              setEditingEntry(null);
+            }}
+          />
           <EntryEditor
             entry={editingEntry}
             folders={vault.folders}
-            onClose={() => setEditingEntry(null)}
+            onClose={() => {
+              if (editingEntry && !vault.entries.some((item) => item.id === editingEntry.id) && selectedEntry?.id === editingEntry.id) {
+                setSelectedEntry(null);
+              }
+              setEditingEntry(null);
+            }}
             onDelete={(id) => {
-              if (!vault || !window.confirm("Переместить запись в корзину?")) return;
+              if (!vault) return;
+              const persisted = vault.entries.some((item) => item.id === id);
+              if (!persisted) {
+                if (selectedEntry?.id === id) setSelectedEntry(null);
+                setEditingEntry(null);
+                return;
+              }
+              if (!window.confirm("Переместить запись в корзину?")) return;
               moveEntryToTrash(id);
             }}
             onSave={(entry) => {
