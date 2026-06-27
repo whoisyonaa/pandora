@@ -46,15 +46,19 @@
 html,
 body,
 #root {
+  width: 100%;
   min-width: 320px;
+  max-width: 100%;
   min-height: 100vh;
   margin: 0;
   background: var(--background-base);
+  overflow-x: hidden;
 }
 
 body {
   color: var(--text-primary);
   overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 button,
@@ -1315,9 +1319,25 @@ small {
 }
 
 @media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    touch-action: pan-y;
+  }
+
   .cipher-app-shell {
     display: block;
+    width: 100%;
+    max-width: 100%;
     min-height: 100dvh;
+    overflow-x: hidden;
     padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
 
@@ -1326,11 +1346,16 @@ small {
   }
 
   .cipher-workspace {
+    width: 100%;
+    max-width: 100%;
     min-height: 100dvh;
     grid-template-rows: auto minmax(0, 1fr);
+    overflow-x: hidden;
   }
 
   .command-bar {
+    width: 100%;
+    max-width: 100%;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-3);
     min-height: auto;
@@ -1380,21 +1405,33 @@ small {
   .workspace-grid,
   .workspace-grid.overview-mode {
     display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .workspace-primary {
     border-right: 0;
-    overflow: visible;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .folder-panel {
+    width: 100%;
+    max-width: 100%;
     border-bottom: 0;
     padding: 10px 18px 8px;
+    overflow: hidden;
   }
 
   .folder-strip {
+    width: 100%;
+    max-width: 100%;
     gap: 10px;
     padding-bottom: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
 
@@ -1419,6 +1456,8 @@ small {
     position: fixed;
     left: 0;
     right: 0;
+    width: 100%;
+    max-width: 100%;
     bottom: calc(70px + env(safe-area-inset-bottom));
     z-index: 30;
     max-height: calc(100dvh - 164px);
@@ -1479,6 +1518,8 @@ small {
     position: fixed;
     left: 0;
     right: 0;
+    width: 100%;
+    max-width: 100%;
     bottom: 0;
     z-index: 35;
     min-height: calc(70px + env(safe-area-inset-bottom));
@@ -1510,6 +1551,8 @@ small {
   }
 
   .vault-entry-row {
+    width: 100%;
+    max-width: 100%;
     grid-template-columns: 52px minmax(0, 1fr);
     min-height: 72px;
     gap: 14px;
@@ -1540,6 +1583,8 @@ small {
   }
 
   .list-toolbar {
+    width: 100%;
+    max-width: 100%;
     min-height: 54px;
     grid-template-columns: minmax(0, 1fr) auto;
     border-bottom: 0;
@@ -1585,8 +1630,17 @@ small {
   }
 
   .vault-entry-list {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
     gap: 4px;
     padding: 10px 18px 24px;
+  }
+
+  .vault-list-panel {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .section-workspace,
@@ -1626,6 +1680,7 @@ small {
   .editor-sheet {
     inset: auto 0 0 0;
     width: 100%;
+    max-width: 100%;
     max-height: min(92dvh, 920px);
     overflow-y: auto;
     overscroll-behavior: contain;
