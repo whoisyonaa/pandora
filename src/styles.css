@@ -583,13 +583,31 @@ small {
 }
 
 .folder-chip {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
+  padding: 2px;
 }
 
 .folder-chip.active {
   border-color: var(--accent-primary);
   background: var(--accent-primary);
   color: var(--accent-inverse);
+}
+
+.folder-chip-main {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
 }
 
 .folder-chip small {
@@ -599,6 +617,26 @@ small {
   display: grid;
   place-items: center;
   background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.folder-actions,
+.folder-rename {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.folder-mini-action {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: var(--radius-1);
+  padding: 0;
+}
+
+.folder-rename input {
+  width: 140px;
+  min-height: 34px;
 }
 
 .folder-create {
@@ -620,7 +658,7 @@ small {
   min-height: 58px;
   border-bottom: 1px solid var(--border-subtle);
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -651,6 +689,7 @@ small {
 }
 
 .list-toolbar select {
+  justify-self: end;
   width: 132px;
   min-height: 36px;
 }
@@ -1318,7 +1357,7 @@ small {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   html,
   body,
   #root {
@@ -1443,8 +1482,30 @@ small {
   .folder-add {
     min-height: 48px;
     border-radius: 14px;
-    padding: 0 18px;
     font-size: 16px;
+  }
+
+  .folder-chip {
+    padding: 2px;
+  }
+
+  .folder-chip-main {
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    font-size: 16px;
+  }
+
+  .folder-mini-action {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 12px;
+  }
+
+  .folder-rename input {
+    width: min(170px, 44vw);
+    min-height: 44px;
   }
 
   .folder-add {

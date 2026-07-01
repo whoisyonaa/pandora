@@ -11,6 +11,12 @@ declare global {
 
 function isPackagedSurface() {
   const userAgent = navigator.userAgent.toLowerCase();
+  if (Boolean(window.Capacitor) && userAgent.includes("android")) {
+    document.documentElement.classList.add("android-native");
+  }
+  if (userAgent.includes("electron")) {
+    document.documentElement.classList.add("electron-windows");
+  }
   return userAgent.includes("electron") || Boolean(window.Capacitor);
 }
 

@@ -21,6 +21,7 @@ import {
   LogOut,
   Moon,
   PanelRight,
+  Pencil,
   Plus,
   RefreshCcw,
   Save,
@@ -70,9 +71,7 @@ type VaultSection =
   | "vault"
   | "favorites"
   | "recent"
-  | "folders"
   | "security"
-  | "sync"
   | "trash"
   | "settings";
 
@@ -545,6 +544,8 @@ function FolderStrip({
   selectedFolder,
   onSelect,
   onCreate,
+  onRename,
+  onDelete,
   onDropEntry,
 }: {
   folders: VaultFolder[];
@@ -552,15 +553,24 @@ function FolderStrip({
   selectedFolder: string;
   onSelect: (id: string) => void;
   onCreate: (name: string) => void | Promise<void>;
+  onRename: (folderId: string, name: string) => void | Promise<void>;
+  onDelete: (folderId: string) => void | Promise<void>;
   onDropEntry: (entryId: string, folderId: string) => void | Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const editInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (creating) inputRef.current?.focus();
   }, [creating]);
+
+  useEffect(() => {
+    if (editingId) editInputRef.current?.focus();
+  }, [editingId]);
 
   async function submitFolder(event: FormEvent) {
     event.preventDefault();
@@ -571,15 +581,24 @@ function FolderStrip({
     setCreating(false);
   }
 
+  async function submitRename(event: FormEvent) {
+    event.preventDefault();
+    if (!editingId) return;
+    const normalizedName = editingName.trim();
+    if (!normalizedName) return;
+    await onRename(editingId, normalizedName);
+    setEditingId(null);
+    setEditingName("");
+  }
+
   return (
     <div className="folder-strip" aria-label="Папки">
       {folders.map((folder) => {
         const ids = descendantFolderIds(folder.id, folders);
         return (
-          <button
+          <div
             key={folder.id}
             className={folder.id === selectedFolder ? "folder-chip active" : "folder-chip"}
-            onClick={() => onSelect(folder.id)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
@@ -587,9 +606,61 @@ function FolderStrip({
               if (entryId) onDropEntry(entryId, folder.id);
             }}
           >
-            <span>{folder.name}</span>
-            <small>{entries.filter((entry) => ids.has(entry.folderId)).length}</small>
-          </button>
+            {editingId === folder.id ? (
+              <form className="folder-rename" onSubmit={submitRename}>
+                <input
+                  ref={editInputRef}
+                  value={editingName}
+                  onChange={(event) => setEditingName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setEditingId(null);
+                      setEditingName("");
+                    }
+                  }}
+                  aria-label="Новое имя папки"
+                />
+                <button type="submit" className="folder-mini-action" aria-label="Сохранить имя папки" title="Сохранить">
+                  <Check size={14} />
+                </button>
+                <button type="button" className="folder-mini-action" onClick={() => { setEditingId(null); setEditingName(""); }} aria-label="Отменить переименование" title="Отменить">
+                  <X size={14} />
+                </button>
+              </form>
+            ) : (
+              <>
+                <button className="folder-chip-main" type="button" onClick={() => onSelect(folder.id)}>
+                  <span>{folder.name}</span>
+                  <small>{entries.filter((entry) => ids.has(entry.folderId)).length}</small>
+                </button>
+                {folder.parentId !== null && (
+                  <span className="folder-actions">
+                    <button
+                      type="button"
+                      className="folder-mini-action"
+                      onClick={() => {
+                        setEditingId(folder.id);
+                        setEditingName(folder.name);
+                      }}
+                      aria-label={`Переименовать папку ${folder.name}`}
+                      title="Переименовать"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="folder-mini-action danger"
+                      onClick={() => onDelete(folder.id)}
+                      aria-label={`Удалить папку ${folder.name}`}
+                      title="Удалить"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         );
       })}
       {creating ? (
@@ -1681,9 +1752,7 @@ function NavigationRail({
     { id: "vault", label: "Хранилище", icon: <KeyRound size={18} /> },
     { id: "favorites", label: "Избранное", icon: <Star size={18} /> },
     { id: "recent", label: "Недавние", icon: <Clock3 size={18} /> },
-    { id: "folders", label: "Папки", icon: <Folder size={18} /> },
     { id: "security", label: "Безопасность", icon: <ShieldCheck size={18} /> },
-    { id: "sync", label: "Синхронизация", icon: <RefreshCcw size={18} /> },
     { id: "trash", label: "Корзина", icon: <Trash2 size={18} /> },
     { id: "settings", label: "Настройки", icon: <Settings size={18} /> },
   ];
@@ -1731,9 +1800,7 @@ function CommandBar({
     vault: "Хранилище",
     favorites: "Избранное",
     recent: "Недавние",
-    folders: "Папки",
     security: "Безопасность",
-    sync: "Синхронизация",
     trash: "Корзина",
     settings: "Настройки",
   };
@@ -1805,7 +1872,7 @@ function CommandPalette({
         </label>
         <div className="palette-list">
           <button onClick={() => { onCreate(); onClose(); }}><Plus size={16} />Создать запись</button>
-          <button onClick={() => { onSection("sync"); onClose(); }}><RefreshCcw size={16} />Открыть синхронизацию</button>
+          <button onClick={() => { onSection("settings"); onClose(); }}><RefreshCcw size={16} />Открыть настройки</button>
           <button onClick={() => { onSection("settings"); onClose(); }}><Settings size={16} />Настройки</button>
           <button onClick={() => { onLock(); onClose(); }}><Lock size={16} />Заблокировать</button>
           {folders.slice(0, 5).map((folder) => (
@@ -1881,10 +1948,6 @@ function VaultList({
         <div>
           <span>ENTRIES</span>
           <strong>{entries.length}</strong>
-        </div>
-        <div className="segmented-control" aria-label="Вид списка">
-          <button className="active">Компактно</button>
-          <button>Расширенно</button>
         </div>
         <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)} aria-label="Сортировка">
           <option value="updatedAt">Недавние</option>
@@ -2321,13 +2384,48 @@ export default function App() {
     setActiveSection("vault");
   };
 
+  const renameFolder = async (folderId: string, name: string) => {
+    const rootId = vault.folders[0].id;
+    if (folderId === rootId) return;
+    const normalizedName = name.trim();
+    if (!normalizedName) return;
+    const folder = vault.folders.find((item) => item.id === folderId);
+    if (!folder) return;
+    const duplicate = vault.folders.some(
+      (item) =>
+        item.id !== folderId &&
+        item.parentId === folder.parentId &&
+        item.name.trim().toLowerCase() === normalizedName.toLowerCase(),
+    );
+    if (duplicate) {
+      window.alert("Папка с таким именем уже есть");
+      return;
+    }
+    const folders = vault.folders.map((item) => (item.id === folderId ? { ...item, name: normalizedName } : item));
+    await persist({ ...vault, folders }, "Папка переименована");
+  };
+
+  const deleteFolder = async (folderId: string) => {
+    const rootId = vault.folders[0].id;
+    if (folderId === rootId) return;
+    const folder = vault.folders.find((item) => item.id === folderId);
+    if (!folder) return;
+    if (!window.confirm(`Удалить папку «${folder.name}»? Записи будут перемещены в «Все».`)) return;
+    const idsToDelete = descendantFolderIds(folderId, vault.folders);
+    const folders = vault.folders.filter((item) => !idsToDelete.has(item.id));
+    const entries = vault.entries.map((entry) => (idsToDelete.has(entry.folderId) ? { ...entry, folderId: rootId, updatedAt: now() } : entry));
+    if (idsToDelete.has(selectedFolder)) {
+      setSelectedFolder(rootId);
+      setSelectedEntry(null);
+    }
+    await persist({ ...vault, folders, entries }, "Папка удалена");
+  };
+
   const mainContent =
     activeSection === "overview" ? (
       <DashboardPanel vault={vault} />
     ) : activeSection === "security" ? (
       <section className="section-workspace"><SecurityOverview vault={vault} /><p className="muted">Проверка выполняется локально. Пароли не отправляются во внешние сервисы.</p></section>
-    ) : activeSection === "sync" ? (
-      <section className="section-workspace"><h2>Синхронизация</h2><p className="muted">Koofr/WebDAV и локальный Wi‑Fi обмен доступны в настройках.</p><button onClick={() => setSettingsOpen(true)}><RefreshCcw size={16} />Открыть настройки синхронизации</button></section>
     ) : activeSection === "trash" ? (
       <TrashPanel entries={deletedEntries} folders={vault.folders} onRestore={restoreEntry} onDeletePermanently={deleteEntryPermanently} />
     ) : (
@@ -2344,6 +2442,8 @@ export default function App() {
             }}
             onDropEntry={moveEntryToFolder}
             onCreate={createFolder}
+            onRename={renameFolder}
+            onDelete={deleteFolder}
           />
         </div>
         <VaultList
