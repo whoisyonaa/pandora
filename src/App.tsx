@@ -2168,6 +2168,7 @@ function DashboardPanel({ vault }: { vault: VaultState }) {
 
 
 export default function App() {
+  const isNativeMobile = Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios";
   const [booting, setBooting] = useState(true);
   const [vault, setVault] = useState<VaultState | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
@@ -2176,7 +2177,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("updatedAt");
   const [status, setStatus] = useState("");
-  const [activeSection, setActiveSection] = useState<VaultSection>("overview");
+  const [activeSection, setActiveSection] = useState<VaultSection>(isNativeMobile ? "vault" : "overview");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<VaultEntry | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2460,7 +2461,7 @@ export default function App() {
     );
 
   return (
-    <main className="cipher-app-shell">
+    <main className={isNativeMobile ? "cipher-app-shell mobile-native" : "cipher-app-shell"}>
       <CipherBackground />
       <NavigationRail active={activeSection} onSelect={selectSection} onLock={lockVault} />
       <section className="cipher-workspace">
