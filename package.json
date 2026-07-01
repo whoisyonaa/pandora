@@ -1,6 +1,6 @@
 {
   "name": "pandora",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -61,10 +61,17 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "guid": "d83c978e-aaa7-5e77-b240-ff46883c2521",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Pandora"
+      "shortcutName": "Pandora",
+      "artifactName": "Pandora-Setup-${version}.${ext}",
+      "uninstallDisplayName": "Pandora"
+    },
+    "portable": {
+      "artifactName": "Pandora-Portable-${version}.${ext}"
     }
   }
 }
