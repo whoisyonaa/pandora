@@ -2,15 +2,26 @@
   <img src="docs/assets/pandora-logo.png" width="144" alt="Логотип Pandora" />
 </p>
 
-<h1 align="center">Pandora</h1>
-
-<p align="center">Локальный зашифрованный менеджер паролей для Windows и Android.</p>
+<h1 align="center">PANDORA</h1>
 
 <p align="center">
-  <a href="https://github.com/whoisyonaa/pandora/releases/latest"><img alt="Версия" src="https://img.shields.io/badge/release-v0.2.0-f2f2f2?style=flat-square&labelColor=090909"></a>
-  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-f2f2f2?style=flat-square&labelColor=090909">
-  <img alt="Android" src="https://img.shields.io/badge/Android-APK-f2f2f2?style=flat-square&labelColor=090909">
-  <img alt="Шифрование" src="https://img.shields.io/badge/vault-AES--256--GCM-f2f2f2?style=flat-square&labelColor=090909">
+  <strong>Пароли остаются вашими.</strong><br>
+  Локальное зашифрованное хранилище для Windows и Android без аккаунта Pandora.
+</p>
+
+<p align="center">
+  <a href="https://github.com/whoisyonaa/pandora/releases/latest"><img alt="Версия" src="https://img.shields.io/badge/release-v0.2.0-f5f5f5?style=for-the-badge&labelColor=090909"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-f5f5f5?style=for-the-badge&labelColor=090909">
+  <img alt="Android" src="https://img.shields.io/badge/Android-APK-f5f5f5?style=for-the-badge&labelColor=090909">
+  <img alt="Шифрование" src="https://img.shields.io/badge/vault-AES--256--GCM-f5f5f5?style=for-the-badge&labelColor=090909">
+</p>
+
+<p align="center">
+  <a href="https://github.com/whoisyonaa/pandora/releases/download/v0.2.0/Pandora-Setup-0.2.0.exe"><strong>Скачать для Windows</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://github.com/whoisyonaa/pandora/releases/download/v0.2.0/Pandora-Android-0.2.0.apk"><strong>Скачать APK</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://github.com/whoisyonaa/pandora/releases/download/v0.2.0/Pandora-Portable-0.2.0.exe"><strong>Portable</strong></a>
 </p>
 
 <p align="center">
@@ -26,6 +37,14 @@
 ## Pandora
 
 Pandora хранит пароли локально в зашифрованном хранилище и синхронизирует между устройствами только зашифрованный файл. У приложения единый мастер-пароль для расшифровки данных и отдельная локальная защита входа через PIN или биометрию.
+
+<table>
+  <tr>
+    <td width="33%"><strong>Локально</strong><br><sub>Нет обязательного аккаунта и собственного сервера Pandora.</sub></td>
+    <td width="33%"><strong>Зашифровано</strong><br><sub>AES-256-GCM и ключ из мастер-пароля.</sub></td>
+    <td width="33%"><strong>На двух платформах</strong><br><sub>Windows installer/portable и подписанный Android APK.</sub></td>
+  </tr>
+</table>
 
 > [!IMPORTANT]
 > Одинаковый мастер-пароль должен использоваться на всех устройствах. Локальные PIN-коды могут отличаться и не участвуют в шифровании облачного файла.
@@ -48,20 +67,41 @@ Pandora хранит пароли локально в зашифрованном
 
 ## Интерфейс
 
+### Windows · хранилище
+
 <p align="center">
   <img src="docs/screenshots/desktop-vault.png" alt="Хранилище Pandora на Windows" width="100%" />
 </p>
 
 <table>
   <tr>
-    <td width="38%" align="center"><strong>Android</strong></td>
-    <td width="62%" align="center"><strong>Вход и создание хранилища</strong></td>
+    <td width="50%" align="center"><strong>Вход и создание хранилища</strong></td>
+    <td width="50%" align="center"><strong>Настройки и темы</strong></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/android-vault.png" alt="Хранилище Pandora на Android" width="300" /></td>
-    <td><img src="docs/screenshots/unlock.png" alt="Экран входа Pandora" /></td>
+    <td><img src="docs/screenshots/unlock.png" alt="Экран входа Pandora для Windows" /></td>
+    <td><img src="docs/screenshots/settings-themes.png" alt="Настройки тем Pandora для Windows" /></td>
   </tr>
 </table>
+
+### Android · хранилище, PIN и биометрия
+
+<p align="center">
+  Мобильный интерфейс использует крупные touch-цели, нижнюю навигацию и отдельный локальный вход.
+</p>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>Список записей</strong></td>
+    <td width="50%" align="center"><strong>Защищённый вход</strong></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/screenshots/android-vault.png" alt="Хранилище Pandora на Android" width="320" /></td>
+    <td align="center" valign="top"><img src="docs/screenshots/android-unlock.png" alt="PIN и биометрический вход Pandora на Android" width="320" /></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Скриншоты: Windows и Android · Pandora v0.2.x</sub></p>
 
 ## Возможности
 
