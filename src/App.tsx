@@ -2861,7 +2861,10 @@ function DashboardPanel({ vault }: { vault: VaultState }) {
 
 
 export default function App() {
-  const isNativeMobile = Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios";
+  const isNativeMobile =
+    Capacitor.getPlatform() === "android" ||
+    Capacitor.getPlatform() === "ios" ||
+    (import.meta.env.DEV && new URLSearchParams(window.location.search).get("platform") === "android");
   const [booting, setBooting] = useState(true);
   const [vault, setVault] = useState<VaultState | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
