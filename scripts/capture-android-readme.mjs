@@ -71,6 +71,11 @@ async function addEntry({ title, username, url, password }) {
   await editor.locator('input[type="password"]').fill(password);
   await editor.getByRole("button", { name: "Сохранить", exact: true }).click();
   await editor.waitFor({ state: "hidden" });
+  const details = page.locator('[aria-label="Просмотр записи"]');
+  if (await details.isVisible()) {
+    await details.getByRole("button", { name: "Закрыть просмотр" }).click();
+    await details.waitFor({ state: "hidden" });
+  }
 }
 
 await addEntry({ title: "Reddit", username: "pandora.demo", url: "reddit.com", password: "R3ddit-demo-2026!" });
