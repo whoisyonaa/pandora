@@ -12,3 +12,13 @@ contextBridge.exposeInMainWorld("pandoraSync", {
     return () => ipcRenderer.removeListener("sync:received", listener);
   },
 });
+
+contextBridge.exposeInMainWorld("pandoraAuth", {
+  status: () => ipcRenderer.invoke("auth:status"),
+  setup: (masterPassword, pin) => ipcRenderer.invoke("auth:setup", { masterPassword, pin }),
+  unlockWithPin: (pin) => ipcRenderer.invoke("auth:unlock-pin", { pin }),
+  updatePin: (masterPassword, pin) => ipcRenderer.invoke("auth:update-pin", { masterPassword, pin }),
+  updateMasterPassword: (masterPassword) => ipcRenderer.invoke("auth:update-master", { masterPassword }),
+  resetFailures: () => ipcRenderer.invoke("auth:reset-failures"),
+  clear: () => ipcRenderer.invoke("auth:clear"),
+});

@@ -1,6 +1,9 @@
 import type { EncryptedVault, VaultState } from "../types/vault";
 
-const ITERATIONS = 250_000;
+const ITERATIONS = 600_000;
+const MIN_SUPPORTED_ITERATIONS = 100_000;
+const MAX_SUPPORTED_ITERATIONS = 2_000_000;
+const MAX_CIPHERTEXT_BYTES = 16 * 1024 * 1024;
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
@@ -63,9 +66,18 @@ export async function encryptVault(vault: VaultState, masterPassword: string): P
 }
 
 export async function decryptVault(encrypted: EncryptedVault, masterPassword: string): Promise<VaultState> {
+  if (encrypted.version !== 1 || encrypted.kdf !== "PBKDF2-SHA-256") {
+    throw new Error("Unsupported encrypted vault format");
+  }
+  if (!Number.isSafeInteger(encrypted.iterations) || encrypted.iterations < MIN_SUPPORTED_ITERATIONS || encrypted.iterations > MAX_SUPPORTED_ITERATIONS) {
+    throw new Error("Invalid vault KDF parameters");
+  }
   const salt = base64ToBytes(encrypted.salt);
   const iv = base64ToBytes(encrypted.iv);
   const ciphertext = base64ToBytes(encrypted.ciphertext);
+  if (salt.length !== 16 || iv.length !== 12 || ciphertext.length < 16 || ciphertext.length > MAX_CIPHERTEXT_BYTES) {
+    throw new Error("Invalid encrypted vault payload");
+  }
   const key = await deriveKey(masterPassword, salt, encrypted.iterations);
   const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
   const decoded = new TextDecoder().decode(decrypted);

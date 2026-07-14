@@ -25,9 +25,13 @@ function normalizeBaseUrl(value: string) {
   try {
     const url = new URL(trimmed);
     if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+    if (url.protocol !== "https:") throw new Error("insecure");
     return url.toString().replace(/\/+$/g, "");
-  } catch {
-    throw new Error("Адрес WebDAV должен начинаться с http:// или https://.");
+  } catch (error) {
+    if (error instanceof Error && error.message === "insecure") {
+      throw new Error("WebDAV должен использовать HTTPS. Незашифрованный HTTP отключён для защиты логина и app password.");
+    }
+    throw new Error("Адрес WebDAV должен начинаться с https://.");
   }
 }
 

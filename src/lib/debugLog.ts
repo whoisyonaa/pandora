@@ -31,16 +31,22 @@ function readEntries(): DebugLogEntry[] {
   }
 }
 
+function sanitizeValue(key: string, value: unknown): unknown {
+  const normalizedKey = key.toLowerCase();
+  if (["password", "masterpassword", "pin", "ciphertext", "rawvault", "raw", "authorization", "clientsecret", "refreshtoken", "accesstoken"].some((blocked) => normalizedKey.includes(blocked))) {
+    return "[redacted]";
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue("item", item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [childKey, sanitizeValue(childKey, childValue)]));
+  }
+  if (typeof value === "string" && value.length > 220) return `${value.slice(0, 220)}...`;
+  return value;
+}
+
 function safeDetails(details?: Record<string, unknown>) {
   if (!details) return undefined;
-  const blocked = new Set(["password", "masterPassword", "ciphertext", "rawVault", "raw", "authorization"]);
-  return Object.fromEntries(
-    Object.entries(details).map(([key, value]) => {
-      if (blocked.has(key)) return [key, "[redacted]"];
-      if (typeof value === "string" && value.length > 220) return [key, `${value.slice(0, 220)}...`];
-      return [key, value];
-    }),
-  );
+  return Object.fromEntries(Object.entries(details).map(([key, value]) => [key, sanitizeValue(key, value)]));
 }
 
 export function addDebugLog(scope: string, message: string, details?: Record<string, unknown>, level: DebugLogLevel = "info") {

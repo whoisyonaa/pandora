@@ -1,25 +1,26 @@
 {
   "name": "pandora",
-  "version": "0.1.4",
+  "version": "0.2.0",
+  "description": "Зашифрованный менеджер паролей Pandora для Windows и Android",
+  "author": "whoisyonaa",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "build": "tsc && vite build",
     "electron:dev": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "dist:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "cap:sync": "npm run build && cap sync android",
     "apk:debug": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-21.0.11.10-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"ANDROID_SDK_ROOT=%LOCALAPPDATA%\\Android\\Sdk\" && npm run build && cap sync android && cd android && gradlew.bat assembleDebug",
+    "apk:release": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-21.0.11.10-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"ANDROID_SDK_ROOT=%LOCALAPPDATA%\\Android\\Sdk\" && npm run build && cap sync android && cd android && gradlew.bat assembleRelease",
     "test": "vitest run"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^9.1.2",
     "@capacitor/share": "^7.0.4",
-    "@vitejs/plugin-react": "^4.3.4",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "vite": "^6.0.3"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.4",
@@ -29,11 +30,13 @@
     "@testing-library/react": "^16.1.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
+    "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "com.pandora.passwords",
@@ -62,11 +65,24 @@
     },
     "nsis": {
       "guid": "d83c978e-aaa7-5e77-b240-ff46883c2521",
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "menuCategory": "Pandora",
       "shortcutName": "Pandora",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerLanguages": [
+        "ru_RU",
+        "en_US"
+      ],
+      "displayLanguageSelector": true,
       "artifactName": "Pandora-Setup-${version}.${ext}",
       "uninstallDisplayName": "Pandora"
     },

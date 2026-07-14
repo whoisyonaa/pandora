@@ -15,7 +15,7 @@ export function createEmptyVault(): VaultState {
       lockAfterMinutes: 5,
       authMethods: {
         masterPassword: true,
-        pin: false,
+        pin: true,
         pattern: false,
         biometrics: false,
       },

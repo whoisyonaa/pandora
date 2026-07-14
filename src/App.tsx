@@ -1,12 +1,13 @@
 import { ChangeEvent, ClipboardEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Share } from "@capacitor/share";
-import { AndroidBiometryStrength, BiometricAuth } from "@aparajita/capacitor-biometric-auth";
+import { BiometricAuth } from "@aparajita/capacitor-biometric-auth";
 import {
   Check,
   Clock3,
   Command,
   Copy,
+  Delete as DeleteKey,
   Download,
   Eye,
   EyeOff,
@@ -19,7 +20,7 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
-  Moon,
+  MoreHorizontal,
   PanelRight,
   Pencil,
   Plus,
@@ -48,10 +49,18 @@ import { importGooglePasswordsCsv } from "./lib/csvImport";
 import { downloadWebDavVault, testWebDavConnection, uploadWebDavVault, type WebDavConfig } from "./lib/webdavSync";
 import { buildCompatibleSyncPayload, mergeSyncedVaults, readSyncPayload } from "./lib/syncEngine";
 import { addDebugLog, clearDebugLogs, formatDebugLogs, readDebugLogs } from "./lib/debugLog";
+import { isValidPin, minPinLength, normalizePin, withLayeredAuthentication } from "./lib/pin";
+import {
+  changeDevicePin,
+  clearDeviceAuth,
+  getDeviceAuthStatus,
+  resetDeviceAuthFailures,
+  setupDeviceAuth,
+  unlockDeviceWithBiometric,
+  unlockDeviceWithPin,
+  updateDeviceMasterPassword,
+} from "./lib/deviceAuth";
 
-const minMasterPasswordLength = 4;
-const optionalLockKey = "pandora.skipLock.v1";
-const rememberedPasswordKey = "pandora.rememberedMasterPassword.v1";
 const biometricUnlockKey = "pandora.biometricUnlock.v1";
 
 type LocalSyncSession = {
@@ -74,6 +83,11 @@ type VaultSection =
   | "security"
   | "trash"
   | "settings";
+
+type MobileDragState = {
+  entryId: string;
+  targetFolderId: string | null;
+};
 
 type PandoraDiscoveryPlugin = {
   scan(options?: { timeoutMs?: number }): Promise<{ hosts: LocalSyncHost[] }>;
@@ -124,16 +138,21 @@ function newEntry(folderId: string): VaultEntry {
   };
 }
 
-function faviconFromUrl(value: string) {
+function normalizedHttpUrl(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) return "";
+  if (!trimmed) return null;
   try {
-    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    if (!url.hostname.includes(".") && url.hostname !== "localhost") return "";
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`;
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed : null;
   } catch {
-    return "";
+    return null;
   }
+}
+
+function faviconFromUrl(value: string) {
+  const url = normalizedHttpUrl(value);
+  if (!url || (!url.hostname.includes(".") && url.hostname !== "localhost")) return "";
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`;
 }
 
 function isImageIcon(value?: string) {
@@ -147,19 +166,14 @@ function siteIconCandidates(entry: VaultEntry) {
     candidates.push(entry.icon!);
   }
 
-  try {
-    const trimmed = entry.url.trim();
-    if (trimmed) {
-      const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-      candidates.push(
-        `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`,
-        `https://icons.duckduckgo.com/ip3/${url.hostname}.ico`,
-        `${url.origin}/favicon.ico`,
-        `${url.origin}/apple-touch-icon.png`,
-      );
-    }
-  } catch {
-    // Manual text icons are handled by the fallback label.
+  const url = normalizedHttpUrl(entry.url);
+  if (url) {
+    candidates.push(
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=128`,
+      `https://icons.duckduckgo.com/ip3/${url.hostname}.ico`,
+      `${url.origin}/favicon.ico`,
+      `${url.origin}/apple-touch-icon.png`,
+    );
   }
 
   return Array.from(new Set(candidates));
@@ -400,7 +414,7 @@ function Splash() {
     <main className="splash-screen">
       <div className="cipher-grid" />
       <div className="splash-mark" aria-label="Pandora запускается">
-        <img src="./pandoralogo.png" alt="" />
+        <img src="./pandora-mark.svg" alt="" />
       </div>
       <p>PANDORA</p>
     </main>
@@ -408,20 +422,58 @@ function Splash() {
 }
 
 function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: string) => void }) {
-  const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"unlock" | "create">(hasStoredVault() ? "unlock" : "create");
+  const isAndroid =
+    (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") ||
+    (import.meta.env.DEV && new URLSearchParams(window.location.search).get("platform") === "android");
+  const [pin, setPin] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [masterPassword, setMasterPassword] = useState("");
+  const [masterConfirmation, setMasterConfirmation] = useState("");
+  const [pendingMasterPassword, setPendingMasterPassword] = useState("");
+  const [pendingVault, setPendingVault] = useState<VaultState | null>(null);
+  const [legacyEncryptionPassword, setLegacyEncryptionPassword] = useState("");
+  const [pinSetupStep, setPinSetupStep] = useState<"first" | "confirm">("first");
+  const [deviceConfigured, setDeviceConfigured] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [mode, setMode] = useState<"loading" | "pin" | "master" | "create-master" | "create-pin" | "migration-master" | "migration-pin">("loading");
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricBusy, setBiometricBusy] = useState(false);
 
+  const settingPin = mode === "create-pin" || mode === "migration-pin";
+  const enteringMaster = mode === "master" || mode === "create-master" || mode === "migration-master";
+  const credentialsReady = enteringMaster
+    ? mode === "master"
+      ? masterPassword.length > 0
+      : masterPassword.length >= 8 && masterConfirmation.length >= 8
+    : settingPin
+      ? isAndroid
+        ? pinSetupStep === "first"
+          ? isValidPin(pin)
+          : isValidPin(confirmation)
+        : isValidPin(pin) && isValidPin(confirmation)
+      : isValidPin(pin);
+
   useEffect(() => {
-    if (mode !== "unlock" || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
+    getDeviceAuthStatus()
+      .then((status) => {
+        setDeviceConfigured(status.configured);
+        setFailedAttempts(status.failedAttempts);
+        if (!hasStoredVault()) setMode("create-master");
+        else if (!status.configured || status.failedAttempts >= 3) setMode("master");
+        else setMode("pin");
+      })
+      .catch(() => setMode(hasStoredVault() ? "master" : "create-master"));
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "pin" || !isAndroid) {
       setBiometricAvailable(false);
       return;
     }
-    if (localStorage.getItem(biometricUnlockKey) !== "1" || !localStorage.getItem(rememberedPasswordKey)) {
+    if (localStorage.getItem(biometricUnlockKey) !== "1" || !deviceConfigured) {
       setBiometricAvailable(false);
       return;
     }
@@ -429,54 +481,164 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
     BiometricAuth.checkBiometry()
       .then((info) => setBiometricAvailable(Boolean(info.strongBiometryIsAvailable)))
       .catch(() => setBiometricAvailable(false));
-  }, [mode]);
+  }, [deviceConfigured, isAndroid, mode]);
+
+  function updatePin(value: string, target: "pin" | "confirmation" = "pin") {
+    const digits = normalizePin(value);
+    if (target === "confirmation") setConfirmation(digits);
+    else setPin(digits);
+    setError("");
+  }
+
+  function pressPinKey(value: string) {
+    if (value === "delete") {
+      const target = settingPin && pinSetupStep === "confirm" ? "confirmation" : "pin";
+      const current = target === "confirmation" ? confirmation : pin;
+      updatePin(current.slice(0, -1), target);
+      return;
+    }
+    const target = settingPin && pinSetupStep === "confirm" ? "confirmation" : "pin";
+    const current = target === "confirmation" ? confirmation : pin;
+    updatePin(`${current}${value}`, target);
+  }
+
+  function resetCredential(nextMode: typeof mode) {
+    setPin("");
+    setConfirmation("");
+    setMasterPassword("");
+    setMasterConfirmation("");
+    setPinSetupStep("first");
+    setError("");
+    setMode(nextMode);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
 
-    if (password.length < minMasterPasswordLength) {
-      setError(`Минимум ${minMasterPasswordLength} символа.`);
+    if (mode === "create-master" || mode === "migration-master") {
+      if (masterPassword.length < 8) {
+        setError("Мастер-пароль должен содержать минимум 8 символов.");
+        return;
+      }
+      if (masterPassword !== masterConfirmation) {
+        setError("Мастер-пароли не совпадают.");
+        return;
+      }
+      setPendingMasterPassword(masterPassword);
+      setMasterPassword("");
+      setMasterConfirmation("");
+      setMode(mode === "create-master" ? "create-pin" : "migration-pin");
+      return;
+    }
+
+    if (mode === "master") {
+      if (!masterPassword) {
+        setError("Введите мастер-пароль.");
+        return;
+      }
+      try {
+        const unlocked = normalizeVault(await unlockVault(masterPassword));
+        if (deviceConfigured) {
+          await updateDeviceMasterPassword(masterPassword);
+          await resetDeviceAuthFailures();
+          onUnlock(withLayeredAuthentication(unlocked), masterPassword);
+          return;
+        }
+        setPendingVault(unlocked);
+        setLegacyEncryptionPassword(masterPassword);
+        if (unlocked.settings.authMethods.masterPassword && !unlocked.settings.authMethods.pin) {
+          setPendingMasterPassword(masterPassword);
+          setMode("migration-pin");
+        } else {
+          setMasterPassword("");
+          setMasterConfirmation("");
+          setMode("migration-master");
+        }
+      } catch {
+        setError("Мастер-пароль не подошёл.");
+      }
+      return;
+    }
+
+    if (!isValidPin(pin)) {
+      setError(`PIN должен содержать минимум ${minPinLength} цифры.`);
+      return;
+    }
+    if (settingPin && isAndroid && pinSetupStep === "first") {
+      setPinSetupStep("confirm");
+      return;
+    }
+    if (settingPin && !isValidPin(confirmation)) {
+      setError("Повторите PIN-код.");
+      return;
+    }
+    if (settingPin && pin !== confirmation) {
+      setError("PIN-коды не совпадают.");
       return;
     }
 
     try {
-      if (mode === "create") {
-        const vault = createEmptyVault();
-        await saveVault(vault, password);
-        onUnlock(vault, password);
+      if (settingPin) {
+        const nextMasterPassword = pendingMasterPassword;
+        let vault = withLayeredAuthentication(pendingVault ?? createEmptyVault());
+        const legacyWebdav = vault.settings.sync.webdav;
+        if (
+          legacyEncryptionPassword &&
+          legacyEncryptionPassword !== nextMasterPassword &&
+          legacyWebdav?.username.trim() &&
+          legacyWebdav.password &&
+          vault.settings.sync.lastSyncAt
+        ) {
+          const remoteRaw = await downloadWebDavVault(legacyWebdav);
+          const remoteVault = normalizeVault((await readSyncPayload(remoteRaw, legacyEncryptionPassword)).vault);
+          vault = withLayeredAuthentication(mergeSyncedVaults(vault, remoteVault).vault);
+          await uploadWebDavVault(
+            { ...legacyWebdav, filePath: `${legacyWebdav.filePath}.backup-before-master-migration` },
+            remoteRaw,
+          );
+          await uploadWebDavVault(legacyWebdav, await buildCompatibleSyncPayload(vault, nextMasterPassword));
+          await readSyncPayload(await downloadWebDavVault(legacyWebdav), nextMasterPassword);
+        }
+        await saveVault(vault, nextMasterPassword);
+        await setupDeviceAuth(nextMasterPassword, pin);
+        onUnlock(vault, nextMasterPassword);
       } else {
-        const vault = normalizeVault(await unlockVault(password));
-        onUnlock(vault, password);
+        const result = await unlockDeviceWithPin(pin);
+        setFailedAttempts(result.failedAttempts);
+        if (!result.masterPassword) {
+          setPin("");
+          if (result.requiresMasterPassword) {
+            setMode("master");
+            setError("Три неверные попытки. Введите мастер-пароль.");
+          } else {
+            setError(`Неверный PIN. Осталось попыток: ${result.remainingAttempts}.`);
+          }
+          return;
+        }
+        const vault = withLayeredAuthentication(normalizeVault(await unlockVault(result.masterPassword)));
+        onUnlock(vault, result.masterPassword);
       }
-    } catch {
-      setError("Не удалось открыть Pandora. Проверьте пароль.");
+    } catch (failure) {
+      if (settingPin) {
+        setError(failure instanceof Error ? failure.message : "Не удалось завершить настройку защиты.");
+      } else {
+        setError("Не удалось открыть хранилище. Введите мастер-пароль.");
+        setMode("master");
+      }
     }
   }
 
   async function unlockWithBiometry() {
-    const rememberedPassword = localStorage.getItem(rememberedPasswordKey);
-    if (!rememberedPassword) {
-      setError("Включите вход по отпечатку в настройках Pandora.");
-      setBiometricAvailable(false);
-      return;
-    }
-
     setError("");
     setBiometricBusy(true);
     try {
-      await BiometricAuth.authenticate({
-        reason: "Подтвердите вход в Pandora",
-        androidTitle: "Pandora",
-        androidSubtitle: "Вход по отпечатку пальца",
-        cancelTitle: "Отмена",
-        allowDeviceCredential: false,
-        androidBiometryStrength: AndroidBiometryStrength.strong,
-      });
-      const vault = normalizeVault(await unlockVault(rememberedPassword));
-      onUnlock(vault, rememberedPassword);
+      const storedMasterPassword = await unlockDeviceWithBiometric();
+      const vault = withLayeredAuthentication(normalizeVault(await unlockVault(storedMasterPassword)));
+      await resetDeviceAuthFailures();
+      onUnlock(vault, storedMasterPassword);
     } catch {
-      setError("Не удалось войти по отпечатку. Введите мастер-пароль.");
+      setError("Не удалось войти по отпечатку. Введите PIN.");
     } finally {
       setBiometricBusy(false);
     }
@@ -485,42 +647,90 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
   return (
     <main className="unlock-shell">
       <CipherBackground variant="unlock" />
-      <section className={error ? "unlock-panel has-error" : "unlock-panel"}>
+      <section className={`${error ? "unlock-panel has-error" : "unlock-panel"}${isAndroid ? " mobile-pin-panel" : ""}`}>
         <div className="unlock-brand">
           <div className="login-logo">
-            <img src="./pandoralogo.png" alt="Pandora" />
+            <img src="./pandora-mark.svg" alt="Pandora" />
           </div>
           <div className="login-title">
-            <span>PANDORA</span>
             <h1>Pandora</h1>
           </div>
         </div>
 
-        <form onSubmit={submit} className="login-form">
-          <label>
-            Мастер-пароль
-            <div className="unlock-password-line">
-              <input
-                autoFocus
-                type={visible ? "text" : "password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                onKeyUp={(event) => setCapsLock(event.getModifierState("CapsLock"))}
-                placeholder="Минимум 4 символа"
-                autoComplete={mode === "create" ? "new-password" : "current-password"}
-              />
-              <button type="button" className="icon-button" onClick={() => setVisible((current) => !current)} aria-label={visible ? "Скрыть пароль" : "Показать пароль"}>
-                {visible ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
+        <form onSubmit={submit} className={isAndroid && !enteringMaster ? "login-form pin-login-form" : "login-form"}>
+          {enteringMaster ? (
+            <>
+            <label>
+              {mode === "master" ? "Мастер-пароль" : "Новый мастер-пароль"}
+              <div className="unlock-password-line">
+                <input
+                  autoFocus
+                  type={visible ? "text" : "password"}
+                  value={masterPassword}
+                  onChange={(event) => setMasterPassword(event.target.value)}
+                  onKeyUp={(event) => setCapsLock(event.getModifierState("CapsLock"))}
+                  autoComplete="current-password"
+                />
+                <button type="button" className="icon-button" onClick={() => setVisible((current) => !current)} aria-label={visible ? "Скрыть пароль" : "Показать пароль"}>
+                  {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </label>
+            {mode !== "master" && (
+              <label>
+                Повторите мастер-пароль
+                <input type="password" value={masterConfirmation} onChange={(event) => setMasterConfirmation(event.target.value)} autoComplete="new-password" />
+              </label>
+            )}
+            </>
+          ) : isAndroid ? (
+            <div className="mobile-pin-entry">
+              <div className="pin-heading"><h2>{settingPin ? "Создайте PIN" : "Введите PIN"}</h2><p>{settingPin ? "Он защищает вход только на этом устройстве" : "Локальная защита Pandora"}</p></div>
+              <div className="pin-indicator" aria-label={`Введено ${settingPin && pinSetupStep === "confirm" ? confirmation.length : pin.length} цифр`}>
+                {Array.from({ length: Math.max(4, Math.min(8, (settingPin && pinSetupStep === "confirm" ? confirmation : pin).length || 4)) }).map((_, index) => (
+                  <span key={index} className={index < (settingPin && pinSetupStep === "confirm" ? confirmation.length : pin.length) ? "filled" : ""} />
+                ))}
+              </div>
+              {settingPin && <p className="pin-step-label">{pinSetupStep === "first" ? "PIN может отличаться на каждом устройстве" : "Повторите PIN для проверки"}</p>}
+              <div className="pin-keypad" aria-label="Цифровая клавиатура">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                  <button type="button" key={digit} onClick={() => pressPinKey(digit)}>{digit}</button>
+                ))}
+                {biometricAvailable && mode === "pin" ? <button type="button" className="pin-symbol" onClick={unlockWithBiometry} aria-label="Войти по отпечатку"><Fingerprint size={22} /></button> : <span />}
+                <button type="button" onClick={() => pressPinKey("0")}>0</button>
+                <button type="button" className="pin-symbol" onClick={() => pressPinKey("delete")} aria-label="Удалить последнюю цифру"><DeleteKey size={22} /></button>
+              </div>
             </div>
-          </label>
-          {capsLock && <p className="inline-warning">Caps Lock включён.</p>}
+          ) : (
+            <div className="pin-fields">
+              <label>
+                {settingPin ? "Новый PIN-код" : "PIN-код"}
+                <input
+                  autoFocus
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={pin}
+                  onChange={(event) => updatePin(event.target.value, "pin")}
+                  placeholder="Минимум 4 цифры"
+                  autoComplete={settingPin ? "new-password" : "current-password"}
+                />
+              </label>
+              {settingPin && (
+                <label>
+                  Повторите PIN-код
+                  <input type="password" inputMode="numeric" pattern="[0-9]*" value={confirmation} onChange={(event) => updatePin(event.target.value, "confirmation")} autoComplete="new-password" />
+                </label>
+              )}
+            </div>
+          )}
+          {enteringMaster && capsLock && <p className="inline-warning">Caps Lock включён.</p>}
           {error && <p className="error">{error}</p>}
-          <button type="submit" className="primary wide">
+          <button type="submit" className="primary wide" disabled={!credentialsReady || biometricBusy}>
             <Lock size={16} />
-            {mode === "create" ? "Создать" : "Войти"}
+            {enteringMaster ? "Продолжить" : settingPin && isAndroid && pinSetupStep === "first" ? "Продолжить" : settingPin ? "Сохранить PIN" : "Войти"}
           </button>
-          {biometricAvailable && mode === "unlock" && (
+          {biometricAvailable && mode === "pin" && !isAndroid && (
             <button type="button" className="wide" onClick={unlockWithBiometry} disabled={biometricBusy}>
               <Fingerprint size={16} />
               {biometricBusy ? "Проверка..." : "Войти по отпечатку"}
@@ -528,11 +738,9 @@ function LockScreen({ onUnlock }: { onUnlock: (vault: VaultState, password: stri
           )}
         </form>
 
-        {hasStoredVault() && (
-          <button type="button" className="ghost-link" onClick={() => setMode(mode === "unlock" ? "create" : "unlock")}>
-            {mode === "unlock" ? "Создать новое хранилище" : "Открыть существующее"}
-          </button>
-        )}
+        {deviceConfigured && mode === "pin" && <button type="button" className="ghost-link" onClick={() => resetCredential("master")}>Войти мастер-паролем</button>}
+        {deviceConfigured && mode === "master" && failedAttempts < 3 && <button type="button" className="ghost-link" onClick={() => resetCredential("pin")}>Вернуться к PIN</button>}
+        {mode === "create-master" && <p className="pin-hint">Мастер-пароль шифрует хранилище и должен совпадать на всех устройствах.</p>}
       </section>
     </main>
   );
@@ -561,8 +769,38 @@ function FolderStrip({
   const [folderName, setFolderName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [menuFolderId, setMenuFolderId] = useState<string | null>(null);
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const editInputRef = useRef<HTMLInputElement | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const folderEntryCounts = useMemo(() => {
+    const directCounts = new Map<string, number>();
+    const children = new Map<string, string[]>();
+
+    for (const entry of entries) {
+      directCounts.set(entry.folderId, (directCounts.get(entry.folderId) ?? 0) + 1);
+    }
+    for (const folder of folders) {
+      if (!folder.parentId) continue;
+      const siblings = children.get(folder.parentId) ?? [];
+      siblings.push(folder.id);
+      children.set(folder.parentId, siblings);
+    }
+
+    const totals = new Map<string, number>();
+    const countFolder = (folderId: string, visiting = new Set<string>()): number => {
+      if (totals.has(folderId)) return totals.get(folderId) ?? 0;
+      if (visiting.has(folderId)) return directCounts.get(folderId) ?? 0;
+      const nextVisiting = new Set(visiting).add(folderId);
+      const total = (directCounts.get(folderId) ?? 0) + (children.get(folderId) ?? []).reduce((sum, childId) => sum + countFolder(childId, nextVisiting), 0);
+      totals.set(folderId, total);
+      return total;
+    };
+
+    for (const folder of folders) countFolder(folder.id);
+    return totals;
+  }, [entries, folders]);
 
   useEffect(() => {
     if (creating) inputRef.current?.focus();
@@ -571,6 +809,24 @@ function FolderStrip({
   useEffect(() => {
     if (editingId) editInputRef.current?.focus();
   }, [editingId]);
+
+  useEffect(() => {
+    if (!menuFolderId) return;
+
+    const closeMenu = (event: PointerEvent) => {
+      if (!stripRef.current?.contains(event.target as Node)) setMenuFolderId(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuFolderId(null);
+    };
+
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuFolderId]);
 
   async function submitFolder(event: FormEvent) {
     event.preventDefault();
@@ -591,10 +847,13 @@ function FolderStrip({
     setEditingName("");
   }
 
+  const menuFolder = folders.find((folder) => folder.id === menuFolderId) ?? null;
+  const deleteFolder = folders.find((folder) => folder.id === deleteFolderId) ?? null;
+
   return (
-    <div className="folder-strip" aria-label="Папки">
+    <div className="folder-strip-shell" ref={stripRef}>
+      <div className="folder-strip" aria-label="Папки">
       {folders.map((folder) => {
-        const ids = descendantFolderIds(folder.id, folders);
         return (
           <div
             key={folder.id}
@@ -629,32 +888,28 @@ function FolderStrip({
               </form>
             ) : (
               <>
-                <button className="folder-chip-main" type="button" onClick={() => onSelect(folder.id)}>
+                <button
+                  className="folder-chip-main"
+                  type="button"
+                  onClick={() => {
+                    onSelect(folder.id);
+                    setMenuFolderId(null);
+                  }}
+                >
                   <span>{folder.name}</span>
-                  <small>{entries.filter((entry) => ids.has(entry.folderId)).length}</small>
+                  <small>{folderEntryCounts.get(folder.id) ?? 0}</small>
                 </button>
                 {folder.parentId !== null && (
                   <span className="folder-actions">
                     <button
                       type="button"
-                      className="folder-mini-action"
-                      onClick={() => {
-                        setEditingId(folder.id);
-                        setEditingName(folder.name);
-                      }}
-                      aria-label={`Переименовать папку ${folder.name}`}
-                      title="Переименовать"
+                      className="folder-more"
+                      onClick={() => setMenuFolderId((current) => (current === folder.id ? null : folder.id))}
+                      aria-label={`Действия с папкой ${folder.name}`}
+                      aria-expanded={menuFolderId === folder.id}
+                      title="Действия с папкой"
                     >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="folder-mini-action danger"
-                      onClick={() => onDelete(folder.id)}
-                      aria-label={`Удалить папку ${folder.name}`}
-                      title="Удалить"
-                    >
-                      <Trash2 size={14} />
+                      <MoreHorizontal size={17} />
                     </button>
                   </span>
                 )}
@@ -694,9 +949,73 @@ function FolderStrip({
           </button>
         </form>
       ) : (
-        <button className="folder-add" type="button" onClick={() => setCreating(true)} aria-label="Создать папку" title="Создать папку">
+        <button className="folder-add" type="button" onClick={() => { setCreating(true); setMenuFolderId(null); }} aria-label="Создать папку" title="Создать папку">
           <FolderPlus size={17} />
         </button>
+      )}
+      </div>
+      {menuFolder && (
+        <div className="folder-menu" role="menu" aria-label={`Действия с папкой ${menuFolder.name}`}>
+          <div className="folder-menu-label">
+            <Folder size={16} />
+            <span>{menuFolder.name}</span>
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setEditingId(menuFolder.id);
+              setEditingName(menuFolder.name);
+              setMenuFolderId(null);
+            }}
+          >
+            <Pencil size={16} />
+            Переименовать
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              setMenuFolderId(null);
+              setDeleteFolderId(menuFolder.id);
+            }}
+          >
+            <Trash2 size={16} />
+            Удалить папку
+          </button>
+        </div>
+      )}
+      {deleteFolder && (
+        <div className="folder-confirm-scrim" role="presentation" onPointerDown={() => setDeleteFolderId(null)}>
+          <section
+            className="folder-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="folder-delete-title"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="folder-confirm-icon"><Trash2 size={20} /></div>
+            <div>
+              <h3 id="folder-delete-title">Удалить «{deleteFolder.name}»?</h3>
+              <p>Сами записи не удалятся. Они будут перемещены в раздел «Все записи».</p>
+            </div>
+            <div className="folder-confirm-actions">
+              <button type="button" onClick={() => setDeleteFolderId(null)}>Отмена</button>
+              <button
+                type="button"
+                className="danger primary-danger"
+                onClick={async () => {
+                  const folderId = deleteFolder.id;
+                  setDeleteFolderId(null);
+                  await onDelete(folderId);
+                }}
+              >
+                Удалить папку
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
@@ -840,7 +1159,6 @@ function EntryEditor({
       <div className="sheet-head">
         <EntryIcon entry={draft} size="large" />
         <div className="sheet-title">
-          <span>ENTRY</span>
           <h2>{draft.title || "Новая запись"}</h2>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Закрыть">
@@ -985,10 +1303,10 @@ function EntryEditor({
 function SettingsPanel({
   vault,
   masterPassword,
-  skipLock,
   biometricUnlock,
-  onSkipLockChange,
   onBiometricUnlockChange,
+  onPinChange,
+  onMasterPasswordChange,
   onClose,
   onVaultChange,
   onImportVault,
@@ -996,10 +1314,10 @@ function SettingsPanel({
 }: {
   vault: VaultState;
   masterPassword: string;
-  skipLock: boolean;
   biometricUnlock: boolean;
-  onSkipLockChange: (enabled: boolean) => void;
   onBiometricUnlockChange: (enabled: boolean) => void;
+  onPinChange: (nextPin: string) => void | Promise<void>;
+  onMasterPasswordChange: (nextMasterPassword: string, nextVault: VaultState) => void | Promise<void>;
   onClose: () => void;
   onVaultChange: (vault: VaultState, message?: string) => void | Promise<void>;
   onImportVault: (vault: VaultState, raw: string) => void | Promise<void>;
@@ -1015,6 +1333,14 @@ function SettingsPanel({
   const [debugLogVersion, setDebugLogVersion] = useState(0);
   const [discoveredHosts, setDiscoveredHosts] = useState<LocalSyncHost[]>([]);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [nextPin, setNextPin] = useState("");
+  const [nextPinConfirmation, setNextPinConfirmation] = useState("");
+  const [pinMessage, setPinMessage] = useState("");
+  const [currentMaster, setCurrentMaster] = useState("");
+  const [nextMaster, setNextMaster] = useState("");
+  const [nextMasterConfirmation, setNextMasterConfirmation] = useState("");
+  const [masterMessage, setMasterMessage] = useState("");
   const [webdav, setWebdav] = useState<WebDavConfig>(
     vault.settings.sync.webdav ?? {
       url: "https://app.koofr.net/dav/Koofr",
@@ -1034,7 +1360,6 @@ function SettingsPanel({
     { id: "general", label: "Основные" },
     { id: "appearance", label: "Внешний вид" },
     { id: "cloud", label: "Облако" },
-    { id: "wifi", label: "Wi-Fi" },
     { id: "files", label: "Импорт" },
     { id: "debug", label: "Логи" },
     { id: "danger", label: "Сброс" },
@@ -1053,6 +1378,83 @@ function SettingsPanel({
 
   function setWebdavField<K extends keyof WebDavConfig>(key: K, value: WebDavConfig[K]) {
     setWebdav((current) => ({ ...current, [key]: value }));
+  }
+
+  async function changePin(event: FormEvent) {
+    event.preventDefault();
+    setPinMessage("");
+    if (currentPin !== masterPassword) {
+      setPinMessage("Мастер-пароль указан неверно.");
+      return;
+    }
+    if (!isValidPin(nextPin)) {
+      setPinMessage(`Новый PIN должен содержать минимум ${minPinLength} цифры.`);
+      return;
+    }
+    if (nextPin !== nextPinConfirmation) {
+      setPinMessage("Новые PIN-коды не совпадают.");
+      return;
+    }
+    await onPinChange(nextPin);
+    setCurrentPin("");
+    setNextPin("");
+    setNextPinConfirmation("");
+    setPinMessage("PIN-код изменён.");
+  }
+
+  async function changeMasterPassword(event: FormEvent) {
+    event.preventDefault();
+    setMasterMessage("");
+    if (currentMaster !== masterPassword) {
+      setMasterMessage("Текущий мастер-пароль указан неверно.");
+      return;
+    }
+    if (nextMaster.length < 8) {
+      setMasterMessage("Новый мастер-пароль должен содержать минимум 8 символов.");
+      return;
+    }
+    if (nextMaster !== nextMasterConfirmation) {
+      setMasterMessage("Новые мастер-пароли не совпадают.");
+      return;
+    }
+
+    setSyncBusy(true);
+    try {
+      let nextVault = vault;
+      if (webdav.username.trim() && webdav.password && vault.settings.sync.lastSyncAt) {
+        const remoteRaw = await downloadWebDavVault(webdav);
+        let remoteVault: VaultState;
+        let remoteAlreadyUsesNextMaster = false;
+        try {
+          remoteVault = normalizeVault((await readSyncPayload(remoteRaw, masterPassword)).vault);
+        } catch {
+          // Another device may already have re-encrypted the shared vault.
+          remoteVault = normalizeVault((await readSyncPayload(remoteRaw, nextMaster)).vault);
+          remoteAlreadyUsesNextMaster = true;
+        }
+        nextVault = mergeSyncedVaults(vault, remoteVault).vault;
+
+        if (!remoteAlreadyUsesNextMaster) {
+          const backupConfig = {
+            ...webdav,
+            filePath: `${webdav.filePath}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+          };
+          await uploadWebDavVault(backupConfig, remoteRaw);
+          const nextRaw = await buildCompatibleSyncPayload(nextVault, nextMaster);
+          await uploadWebDavVault(webdav, nextRaw);
+          await readSyncPayload(await downloadWebDavVault(webdav), nextMaster);
+        }
+      }
+      await onMasterPasswordChange(nextMaster, nextVault);
+      setCurrentMaster("");
+      setNextMaster("");
+      setNextMasterConfirmation("");
+      setMasterMessage("Мастер-пароль изменён. Используйте его на остальных устройствах.");
+    } catch (error) {
+      setMasterMessage(error instanceof Error ? error.message : "Не удалось изменить мастер-пароль.");
+    } finally {
+      setSyncBusy(false);
+    }
   }
 
   function vaultWithWebdav(message?: string) {
@@ -1415,7 +1817,6 @@ function SettingsPanel({
     <aside className="settings-drawer" aria-label="Настройки">
       <div className="sheet-head">
         <div>
-          <span>SETTINGS</span>
           <h2>Настройки</h2>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Закрыть настройки">
@@ -1433,28 +1834,61 @@ function SettingsPanel({
 
       <div className="settings-content">
       <section className="settings-section" hidden={settingsTab !== "general"}>
-        <h3>Вход</h3>
-        <label className="switch">
-          <input type="checkbox" checked={skipLock} onChange={(event) => onSkipLockChange(event.target.checked)} />
-          Не спрашивать пароль при запуске на этом устройстве
-        </label>
+        <h3>Безопасность входа</h3>
+        <p className="muted">Мастер-пароль шифрует хранилище и синхронизацию. PIN защищает вход только на этом устройстве.</p>
+
         {Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android" && (
           <label className="switch">
             <input type="checkbox" checked={biometricUnlock} onChange={(event) => onBiometricUnlockChange(event.target.checked)} />
-            Вход по отпечатку пальца на этом устройстве
+            Вход по отпечатку пальца
           </label>
         )}
+
+        <div className="credential-settings">
+          <form className="pin-change-form" onSubmit={changePin}>
+            <h4>Изменить PIN</h4>
+            <p className="muted">Смена PIN не влияет на Koofr и другие устройства.</p>
+            <label>
+              Мастер-пароль
+              <input type="password" value={currentPin} onChange={(event) => setCurrentPin(event.target.value)} autoComplete="current-password" />
+            </label>
+            <div className="pin-change-grid">
+              <label>
+                Новый PIN
+                <input type="password" inputMode="numeric" pattern="[0-9]*" value={nextPin} onChange={(event) => setNextPin(normalizePin(event.target.value))} autoComplete="new-password" />
+              </label>
+              <label>
+                Повторите PIN
+                <input type="password" inputMode="numeric" pattern="[0-9]*" value={nextPinConfirmation} onChange={(event) => setNextPinConfirmation(normalizePin(event.target.value))} autoComplete="new-password" />
+              </label>
+            </div>
+            {pinMessage && <p className={pinMessage.endsWith("изменён.") ? "sync-message" : "error"}>{pinMessage}</p>}
+            <button type="submit" disabled={!currentPin || !nextPin || !nextPinConfirmation}><KeyRound size={16} />Изменить PIN</button>
+          </form>
+
+          <form className="pin-change-form" onSubmit={changeMasterPassword}>
+            <h4>Изменить мастер-пароль</h4>
+            <p className="muted">После смены введите новый мастер-пароль на каждом устройстве. Koofr-файл будет перешифрован автоматически.</p>
+            <label>
+              Текущий мастер-пароль
+              <input type="password" value={currentMaster} onChange={(event) => setCurrentMaster(event.target.value)} autoComplete="current-password" />
+            </label>
+            <label>
+              Новый мастер-пароль
+              <input type="password" value={nextMaster} onChange={(event) => setNextMaster(event.target.value)} autoComplete="new-password" />
+            </label>
+            <label>
+              Повторите мастер-пароль
+              <input type="password" value={nextMasterConfirmation} onChange={(event) => setNextMasterConfirmation(event.target.value)} autoComplete="new-password" />
+            </label>
+            {masterMessage && <p className={masterMessage.startsWith("Мастер-пароль изменён") ? "sync-message" : "error"}>{masterMessage}</p>}
+            <button type="submit" disabled={syncBusy || !currentMaster || !nextMaster || !nextMasterConfirmation}><Lock size={16} />Изменить мастер-пароль</button>
+          </form>
+        </div>
+
         <label>
           Автоблокировка
-          <select
-            value={vault.settings.lockAfterMinutes}
-            onChange={(event) =>
-              onVaultChange({
-                ...vault,
-                settings: { ...vault.settings, lockAfterMinutes: Number(event.target.value) },
-              })
-            }
-          >
+          <select value={vault.settings.lockAfterMinutes} onChange={(event) => onVaultChange({ ...vault, settings: { ...vault.settings, lockAfterMinutes: Number(event.target.value) } })}>
             <option value={5}>5 минут</option>
             <option value={15}>15 минут</option>
             <option value={30}>30 минут</option>
@@ -1491,12 +1925,59 @@ function SettingsPanel({
           Основной вариант: Koofr через WebDAV. Нужен бесплатный аккаунт Koofr и пароль приложения из настроек Koofr.
           В облаке хранится только зашифрованный файл Pandora.
         </p>
-        <div className="sync-guide">
-          <strong>Koofr, рекомендовано</strong>
-          <span>1. Создайте app password в Koofr: Account settings → Preferences → Password.</span>
-          <span>2. В Pandora введите email Koofr и этот app password.</span>
-          <span>3. Нажмите «Проверить», затем «Сохранить в облако» или «Загрузить из облака».</span>
-        </div>
+        <details className="koofr-guide">
+          <summary>
+            <span><strong>Как подключить Koofr</strong><small>Полная инструкция и решение частых ошибок</small></span>
+            <span className="guide-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="koofr-guide-content">
+            <section>
+              <h4>1. Подготовьте Koofr</h4>
+              <ol>
+                <li>Создайте бесплатный аккаунт на <a href="https://app.koofr.net" target="_blank" rel="noreferrer">app.koofr.net</a> и подтвердите email.</li>
+                <li>Откройте настройки аккаунта Koofr, затем <b>Preferences → Password</b>.</li>
+                <li>Создайте отдельный <b>app password</b> для Pandora. Обычный пароль аккаунта здесь не работает.</li>
+                <li>Сохраните app password в надёжном месте: Koofr может показать его только один раз.</li>
+              </ol>
+            </section>
+            <section>
+              <h4>2. Настройте первое устройство</h4>
+              <ol>
+                <li>Оставьте адрес <code>https://app.koofr.net/dav/Koofr</code>.</li>
+                <li>В поле «Логин» укажите email аккаунта Koofr, а в поле пароля — созданный app password.</li>
+                <li>Нажмите «Проверить». После успешной проверки нажмите «Сохранить в облако».</li>
+                <li>В Koofr появится файл <code>pandora-vault.pandora</code>. В нём нет открытых паролей — это зашифрованное хранилище.</li>
+              </ol>
+            </section>
+            <section>
+              <h4>3. Подключите второе устройство</h4>
+              <ol>
+                <li>Создайте локальный PIN. Он может отличаться от PIN первого устройства.</li>
+                <li>Введите <b>тот же мастер-пароль</b>, который используется на первом устройстве.</li>
+                <li>Укажите тот же email Koofr, app password, адрес и путь файла.</li>
+                <li>Нажмите «Загрузить из облака». После первой загрузки используйте кнопку «Синхронизировать».</li>
+              </ol>
+            </section>
+            <section className="guide-warning">
+              <h4>Важно</h4>
+              <ul>
+                <li>Мастер-пароль должен совпадать на всех устройствах. Иначе файл нельзя расшифровать.</li>
+                <li>PIN — только локальная защита входа. Он не участвует в шифровании Koofr и может быть разным.</li>
+                <li>После смены мастер-пароля откройте этот раздел на остальных устройствах и укажите старый пароль как текущий, а новый — как новый. Pandora примет уже перешифрованное облако.</li>
+                <li>Не удаляйте облачный файл вручную и не редактируйте его содержимое.</li>
+              </ul>
+            </section>
+            <section>
+              <h4>Если не работает</h4>
+              <dl>
+                <dt>401 или 403</dt><dd>Проверьте email и app password. Не используйте обычный пароль Koofr.</dd>
+                <dt>404</dt><dd>На первом устройстве сначала нажмите «Сохранить в облако» и проверьте одинаковый путь файла.</dd>
+                <dt>Ошибка расшифровки</dt><dd>На устройствах введены разные мастер-пароли либо облачный файл создан старой сборкой.</dd>
+                <dt>Записи не появились</dt><dd>Нажмите «Синхронизировать» и проверьте количество записей в сообщении результата.</dd>
+              </dl>
+            </section>
+          </div>
+        </details>
         <label>
           Провайдер
           <select
@@ -1673,7 +2154,7 @@ function SettingsPanel({
 
       <section className="settings-section" hidden={settingsTab !== "debug"}>
         <h3>Диагностика</h3>
-        <p className="muted">Журнал не содержит мастер-пароль и содержимое хранилища. После ошибки синхронизации скачайте или скопируйте его и отправьте в чат.</p>
+        <p className="muted">Журнал не содержит PIN-код и содержимое хранилища. После ошибки синхронизации скачайте или скопируйте его и отправьте в чат.</p>
         <div className="debug-console">
           <span>Записей в журнале: {debugLogs.length}</span>
           <pre>{debugPreview || "Пока нет записей. Запустите проверку или синхронизацию."}</pre>
@@ -1760,11 +2241,10 @@ function NavigationRail({
   return (
     <aside className="navigation-rail" aria-label="Навигация Pandora">
       <div className="rail-brand">
-        <img src="./pandoralogo.png" alt="" />
+        <img src="./pandora-mark.svg" alt="" />
         <div>
-          <span>PANDORA</span>
-          <strong>Vault</strong>
-          <small>UNLOCKED</small>
+          <strong>Pandora</strong>
+          <small>Хранилище открыто</small>
         </div>
         <button className="rail-lock-icon" onClick={onLock} aria-label="Заблокировать">
           <LogOut size={16} />
@@ -1808,7 +2288,6 @@ function CommandBar({
   return (
     <header className="command-bar">
       <div>
-        <span>SECTION</span>
         <h1>{titles[active]}</h1>
       </div>
       <label className="command-search">
@@ -1863,8 +2342,8 @@ function CommandPalette({
     .slice(0, 6);
 
   return (
-    <div className="palette-layer" role="dialog" aria-modal="true" aria-label="Command Palette">
-      <button className="palette-scrim" onClick={onClose} aria-label="Закрыть Command Palette" />
+    <div className="palette-layer" role="dialog" aria-modal="true" aria-label="Команды Pandora">
+      <button className="palette-scrim" onClick={onClose} aria-label="Закрыть команды" />
       <section className="command-palette">
         <label className="palette-input">
           <Command size={18} />
@@ -1872,7 +2351,6 @@ function CommandPalette({
         </label>
         <div className="palette-list">
           <button onClick={() => { onCreate(); onClose(); }}><Plus size={16} />Создать запись</button>
-          <button onClick={() => { onSection("settings"); onClose(); }}><RefreshCcw size={16} />Открыть настройки</button>
           <button onClick={() => { onSection("settings"); onClose(); }}><Settings size={16} />Настройки</button>
           <button onClick={() => { onLock(); onClose(); }}><Lock size={16} />Заблокировать</button>
           {folders.slice(0, 5).map((folder) => (
@@ -1887,25 +2365,182 @@ function CommandPalette({
   );
 }
 
-function VaultEntryRow({
+export function VaultEntryRow({
   entry,
   folders,
   selected,
+  dragEnabled,
+  mobileDragEnabled,
   onSelect,
   onDragStart,
+  onMobileDragStart,
+  onMobileDragMove,
+  onMobileDragEnd,
+  onMobileDragCancel,
 }: {
   entry: VaultEntry;
   folders: VaultFolder[];
   selected: boolean;
+  dragEnabled: boolean;
+  mobileDragEnabled: boolean;
   onSelect: (entry: VaultEntry) => void;
   onDragStart: (entryId: string) => void;
+  onMobileDragStart: (entryId: string, x: number, y: number) => void;
+  onMobileDragMove: (x: number, y: number) => void;
+  onMobileDragEnd: () => void;
+  onMobileDragCancel: () => void;
 }) {
+  const rowRef = useRef<HTMLButtonElement | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const scrollStartRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const touchScrollingRef = useRef(false);
+  const lastTouchRef = useRef({ y: 0, time: 0 });
+  const scrollVelocityRef = useRef(0);
+  const momentumFrameRef = useRef<number | null>(null);
+  const mobileDraggingRef = useRef(false);
+  const suppressClickUntilRef = useRef(0);
+  const [mobileDragging, setMobileDragging] = useState(false);
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row || !mobileDragEnabled) return;
+
+    const clearHoldTimer = () => {
+      if (holdTimerRef.current !== null) {
+        window.clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+    };
+    const cancelMomentum = () => {
+      if (momentumFrameRef.current !== null) {
+        window.cancelAnimationFrame(momentumFrameRef.current);
+        momentumFrameRef.current = null;
+      }
+    };
+    const startMomentum = (container: HTMLElement, initialVelocity: number) => {
+      let velocity = Math.max(-2.4, Math.min(2.4, initialVelocity));
+      if (Math.abs(velocity) < 0.08) return;
+      let previousTime = performance.now();
+      const step = (time: number) => {
+        const elapsed = Math.min(32, time - previousTime);
+        previousTime = time;
+        const previousScrollTop = container.scrollTop;
+        container.scrollTop += velocity * elapsed;
+        velocity *= Math.pow(0.94, elapsed / 16.67);
+        if (Math.abs(velocity) < 0.025 || container.scrollTop === previousScrollTop) {
+          momentumFrameRef.current = null;
+          return;
+        }
+        momentumFrameRef.current = window.requestAnimationFrame(step);
+      };
+      momentumFrameRef.current = window.requestAnimationFrame(step);
+    };
+    const resetDrag = () => {
+      clearHoldTimer();
+      mobileDraggingRef.current = false;
+      setMobileDragging(false);
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      cancelMomentum();
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+      lastTouchRef.current = { y: touch.clientY, time: performance.now() };
+      scrollVelocityRef.current = 0;
+      scrollContainerRef.current = row.closest<HTMLElement>(".cipher-workspace");
+      scrollStartRef.current = scrollContainerRef.current?.scrollTop ?? 0;
+      touchScrollingRef.current = false;
+      clearHoldTimer();
+      holdTimerRef.current = window.setTimeout(() => {
+        mobileDraggingRef.current = true;
+        setMobileDragging(true);
+        suppressClickUntilRef.current = Date.now() + 700;
+        navigator.vibrate?.(24);
+        onMobileDragStart(entry.id, touch.clientX, touch.clientY);
+      }, 420);
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const distance = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
+      if (!mobileDraggingRef.current) {
+        if (distance > 8) {
+          clearHoldTimer();
+          touchScrollingRef.current = true;
+          suppressClickUntilRef.current = Date.now() + 300;
+          event.preventDefault();
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollStartRef.current + touchStartRef.current.y - touch.clientY;
+          }
+          const currentTime = performance.now();
+          const elapsed = Math.max(8, currentTime - lastTouchRef.current.time);
+          const instantVelocity = (lastTouchRef.current.y - touch.clientY) / elapsed;
+          scrollVelocityRef.current = scrollVelocityRef.current * 0.25 + instantVelocity * 0.75;
+          lastTouchRef.current = { y: touch.clientY, time: currentTime };
+        }
+        return;
+      }
+      event.preventDefault();
+      onMobileDragMove(touch.clientX, touch.clientY);
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      clearHoldTimer();
+      if (touchScrollingRef.current) {
+        event.preventDefault();
+        const container = scrollContainerRef.current;
+        touchScrollingRef.current = false;
+        scrollContainerRef.current = null;
+        if (container) startMomentum(container, scrollVelocityRef.current);
+        return;
+      }
+      if (!mobileDraggingRef.current) return;
+      event.preventDefault();
+      const touch = event.changedTouches[0];
+      if (touch) onMobileDragMove(touch.clientX, touch.clientY);
+      onMobileDragEnd();
+      resetDrag();
+    };
+    const handleTouchCancel = () => {
+      const wasDragging = mobileDraggingRef.current;
+      touchScrollingRef.current = false;
+      scrollContainerRef.current = null;
+      resetDrag();
+      if (wasDragging) onMobileDragCancel();
+    };
+
+    row.addEventListener("touchstart", handleTouchStart, { passive: false });
+    row.addEventListener("touchmove", handleTouchMove, { passive: false });
+    row.addEventListener("touchend", handleTouchEnd, { passive: false });
+    row.addEventListener("touchcancel", handleTouchCancel, { passive: true });
+    return () => {
+      clearHoldTimer();
+      cancelMomentum();
+      row.removeEventListener("touchstart", handleTouchStart);
+      row.removeEventListener("touchmove", handleTouchMove);
+      row.removeEventListener("touchend", handleTouchEnd);
+      row.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [entry.id, mobileDragEnabled, onMobileDragCancel, onMobileDragEnd, onMobileDragMove, onMobileDragStart]);
+
   return (
     <button
-      className={selected ? "vault-entry-row selected" : "vault-entry-row"}
-      onClick={() => onSelect(entry)}
-      draggable
+      ref={rowRef}
+      className={`${selected ? "vault-entry-row selected" : "vault-entry-row"}${mobileDragging ? " mobile-dragging" : ""}`}
+      onClick={(event) => {
+        if (Date.now() < suppressClickUntilRef.current) {
+          event.preventDefault();
+          return;
+        }
+        onSelect(entry);
+      }}
+      draggable={dragEnabled}
       onDragStart={(event) => {
+        if (!dragEnabled) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application/x-pandora-entry", entry.id);
         event.dataTransfer.setData("text/plain", entry.id);
@@ -1928,26 +2563,38 @@ function VaultList({
   folders,
   selectedId,
   sort,
+  dragEnabled,
+  mobileDragEnabled,
   onSort,
   onSelect,
   onCreate,
   onDragStart,
+  onMobileDragStart,
+  onMobileDragMove,
+  onMobileDragEnd,
+  onMobileDragCancel,
 }: {
   entries: VaultEntry[];
   folders: VaultFolder[];
   selectedId: string | null;
   sort: SortMode;
+  dragEnabled: boolean;
+  mobileDragEnabled: boolean;
   onSort: (mode: SortMode) => void;
   onSelect: (entry: VaultEntry) => void;
   onCreate: () => void;
   onDragStart: (entryId: string) => void;
+  onMobileDragStart: (entryId: string, x: number, y: number) => void;
+  onMobileDragMove: (x: number, y: number) => void;
+  onMobileDragEnd: () => void;
+  onMobileDragCancel: () => void;
 }) {
   return (
     <section className="vault-list-panel" aria-label="Список записей">
       <div className="list-toolbar">
         <div>
-          <span>ENTRIES</span>
           <strong>{entries.length}</strong>
+          <span>записей</span>
         </div>
         <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)} aria-label="Сортировка">
           <option value="updatedAt">Недавние</option>
@@ -1967,11 +2614,53 @@ function VaultList({
       ) : (
         <div className="vault-entry-list">
           {entries.map((entry) => (
-            <VaultEntryRow key={entry.id} entry={entry} folders={folders} selected={entry.id === selectedId} onSelect={onSelect} onDragStart={onDragStart} />
+            <VaultEntryRow
+              key={entry.id}
+              entry={entry}
+              folders={folders}
+              selected={entry.id === selectedId}
+              dragEnabled={dragEnabled}
+              mobileDragEnabled={mobileDragEnabled}
+              onSelect={onSelect}
+              onDragStart={onDragStart}
+              onMobileDragStart={onMobileDragStart}
+              onMobileDragMove={onMobileDragMove}
+              onMobileDragEnd={onMobileDragEnd}
+              onMobileDragCancel={onMobileDragCancel}
+            />
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+function MobileFolderDropTray({
+  folders,
+  targetFolderId,
+}: {
+  folders: VaultFolder[];
+  targetFolderId: string | null;
+}) {
+  return (
+    <aside className="mobile-folder-drop-tray" aria-label="Выбор папки для переноса">
+      <div className="mobile-folder-drop-title">
+        <Folder size={18} />
+        <span>Перетащите в папку</span>
+      </div>
+      <div className="mobile-folder-drop-targets">
+        {folders.map((folder) => (
+          <div
+            key={folder.id}
+            className={folder.id === targetFolderId ? "mobile-folder-drop-target active" : "mobile-folder-drop-target"}
+            data-mobile-folder-drop={folder.id}
+          >
+            <Folder size={17} />
+            <span>{folder.name}</span>
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -2006,10 +2695,10 @@ function EntryDetailsPanel({
         <h2>Выберите запись</h2>
         <p>Справа появятся логин, пароль, сайт, заметки и быстрые действия.</p>
         <div className="security-grid">
-          <div><span>ENTRIES</span><strong>{visibleEntries.length}</strong></div>
-          <div><span>WEAK</span><strong>{stats.weak}</strong></div>
-          <div><span>REUSED</span><strong>{stats.duplicate}</strong></div>
-          <div><span>OLD</span><strong>{stats.old}</strong></div>
+          <div><span>Записи</span><strong>{visibleEntries.length}</strong></div>
+          <div><span>Слабые</span><strong>{stats.weak}</strong></div>
+          <div><span>Повторы</span><strong>{stats.duplicate}</strong></div>
+          <div><span>Старые</span><strong>{stats.old}</strong></div>
         </div>
         <button className="primary" onClick={onCreate}><Plus size={17} />Новая запись</button>
       </aside>
@@ -2048,9 +2737,16 @@ function EntryDetailsPanel({
           <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
         </div>
         <div className="detail-field">
-          <span>URL</span>
+          <span>Сайт</span>
           <strong>{entry.url || "Не указан"}</strong>
-          <button className="copy-action" disabled={!entry.url} onClick={() => entry.url && window.open(entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, "_blank")}>
+          <button
+            className="copy-action"
+            disabled={!normalizedHttpUrl(entry.url)}
+            onClick={() => {
+              const url = normalizedHttpUrl(entry.url);
+              if (url) window.open(url.toString(), "_blank", "noopener,noreferrer");
+            }}
+          >
             <Globe size={15} />
             Открыть
           </button>
@@ -2064,16 +2760,13 @@ function EntryDetailsPanel({
       </div>
 
       <div className="entry-metadata">
-        <div><span>LAST MODIFIED</span><strong>{new Date(entry.updatedAt).toLocaleString("ru-RU")}</strong></div>
-        <div><span>CREATED</span><strong>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</strong></div>
-        <div><span>PASSWORD AGE</span><strong>{passwordAgeDays(entry)} дн.</strong></div>
-        <div><span>SECURITY</span><strong>{passwordRisk(entry, visibleEntries)}</strong></div>
+        <div><span>Изменено</span><strong>{new Date(entry.updatedAt).toLocaleString("ru-RU")}</strong></div>
+        <div><span>Создано</span><strong>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</strong></div>
+        <div><span>Возраст пароля</span><strong>{passwordAgeDays(entry)} дн.</strong></div>
+        <div><span>Безопасность</span><strong>{passwordRisk(entry, visibleEntries)}</strong></div>
       </div>
 
       <div className="details-actions">
-        <button onClick={() => entry.url && window.open(entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, "_blank")} disabled={!entry.url}><Globe size={16} />Сайт</button>
-        <CopyButton value={entry.username} label="Логин" onCopied={onCopy} />
-        <CopyButton value={entry.password} label="Пароль" onCopied={onCopy} />
         <button className="primary" onClick={() => onEdit(entry)}><PanelRight size={16} />Редактировать</button>
         <button className="danger" onClick={() => onDelete(entry.id)}><Trash2 size={16} />Удалить</button>
       </div>
@@ -2096,7 +2789,7 @@ function TrashPanel({
     <section className="section-workspace trash-workspace">
       <div className="trash-head">
         <div>
-          <h2>Корзина</h2>
+          <h2>Удалённые записи</h2>
           <p className="muted">Удалённые записи хранятся здесь и синхронизируются между устройствами, пока вы не удалите их навсегда.</p>
         </div>
         <strong>{entries.length}</strong>
@@ -2135,7 +2828,7 @@ function SecurityOverview({ vault }: { vault: VaultState }) {
   return (
     <section className="security-overview">
       <div className="overview-meter">
-        <span>SECURITY SCORE</span>
+        <span>Уровень безопасности</span>
         <strong>{score}%</strong>
         <div><i style={{ width: `${score}%` }} /></div>
       </div>
@@ -2145,7 +2838,7 @@ function SecurityOverview({ vault }: { vault: VaultState }) {
         <div><span>Повторы</span><strong>{stats.duplicate}</strong></div>
         <div><span>Старые</span><strong>{stats.old}</strong></div>
         <div><span>Устройства</span><strong>{Capacitor.isNativePlatform() ? 1 : 1}</strong></div>
-        <div><span>Синхронизация</span><strong>{vault.settings.sync.lastSyncAt ? "OK" : "LOCAL"}</strong></div>
+        <div><span>Синхронизация</span><strong>{vault.settings.sync.lastSyncAt ? "Готово" : "Локально"}</strong></div>
       </div>
     </section>
   );
@@ -2181,7 +2874,8 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<VaultEntry | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [skipLock, setSkipLock] = useState(() => localStorage.getItem(optionalLockKey) === "1");
+  const [mobileDrag, setMobileDrag] = useState<MobileDragState | null>(null);
+  const mobileDragRef = useRef<MobileDragState | null>(null);
   const [biometricUnlock, setBiometricUnlock] = useState(() => localStorage.getItem(biometricUnlockKey) === "1");
   const [manualLock, setManualLock] = useState(false);
 
@@ -2193,20 +2887,6 @@ export default function App() {
   useEffect(() => {
     applyTheme(vault?.settings.theme ?? defaultTheme);
   }, [vault?.settings.theme]);
-
-  useEffect(() => {
-    if (booting || vault || manualLock || !skipLock || biometricUnlock) return;
-    const rememberedPassword = localStorage.getItem(rememberedPasswordKey);
-    if (!rememberedPassword || !hasStoredVault()) return;
-
-    unlockVault(rememberedPassword)
-      .then((unlocked) => unlock(unlocked, rememberedPassword))
-      .catch(() => {
-        localStorage.removeItem(optionalLockKey);
-        localStorage.removeItem(rememberedPasswordKey);
-        setSkipLock(false);
-      });
-  }, [biometricUnlock, booting, manualLock, skipLock, vault]);
 
   useEffect(() => {
     if (!vault || !masterPassword) return;
@@ -2227,9 +2907,6 @@ export default function App() {
 
   function unlock(unlocked: VaultState, password: string) {
     const cleanVault = normalizeVault(unlocked);
-    if (skipLock || biometricUnlock) {
-      localStorage.setItem(rememberedPasswordKey, password);
-    }
     setManualLock(false);
     setVault(cleanVault);
     setMasterPassword(password);
@@ -2324,6 +3001,36 @@ export default function App() {
     persist(nextVault, "Запись перемещена");
   }
 
+  function startMobileEntryDrag(entryId: string, x: number, y: number) {
+    const next = { entryId, targetFolderId: null };
+    mobileDragRef.current = next;
+    setMobileDrag(next);
+    updateMobileEntryDrag(x, y);
+  }
+
+  function updateMobileEntryDrag(x: number, y: number) {
+    const current = mobileDragRef.current;
+    if (!current) return;
+    const target = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-mobile-folder-drop]");
+    const targetFolderId = target?.dataset.mobileFolderDrop ?? null;
+    if (targetFolderId === current.targetFolderId) return;
+    const next = { ...current, targetFolderId };
+    mobileDragRef.current = next;
+    setMobileDrag(next);
+  }
+
+  function finishMobileEntryDrag() {
+    const current = mobileDragRef.current;
+    mobileDragRef.current = null;
+    setMobileDrag(null);
+    if (current?.targetFolderId) moveEntryToFolder(current.entryId, current.targetFolderId);
+  }
+
+  function cancelMobileEntryDrag() {
+    mobileDragRef.current = null;
+    setMobileDrag(null);
+  }
+
   function moveEntryToTrash(entryId: string) {
     if (!vault) return;
     const entry = vault.entries.find((item) => item.id === entryId);
@@ -2411,7 +3118,6 @@ export default function App() {
     if (folderId === rootId) return;
     const folder = vault.folders.find((item) => item.id === folderId);
     if (!folder) return;
-    if (!window.confirm(`Удалить папку «${folder.name}»? Записи будут перемещены в «Все».`)) return;
     const idsToDelete = descendantFolderIds(folderId, vault.folders);
     const folders = vault.folders.filter((item) => !idsToDelete.has(item.id));
     const entries = vault.entries.map((entry) => (idsToDelete.has(entry.folderId) ? { ...entry, folderId: rootId, updatedAt: now() } : entry));
@@ -2452,10 +3158,16 @@ export default function App() {
           folders={vault.folders}
           selectedId={selectedEntry?.id ?? null}
           sort={sort}
+          dragEnabled={!isNativeMobile}
+          mobileDragEnabled={isNativeMobile}
           onSort={setSort}
           onSelect={setSelectedEntry}
           onCreate={createEntry}
           onDragStart={() => setSelectedEntry(null)}
+          onMobileDragStart={startMobileEntryDrag}
+          onMobileDragMove={updateMobileEntryDrag}
+          onMobileDragEnd={finishMobileEntryDrag}
+          onMobileDragCancel={cancelMobileEntryDrag}
         />
       </>
     );
@@ -2466,22 +3178,35 @@ export default function App() {
       <NavigationRail active={activeSection} onSelect={selectSection} onLock={lockVault} />
       <section className="cipher-workspace">
         <CommandBar active={activeSection} query={query} onQuery={setQuery} onCreate={createEntry} onPalette={() => setCommandPaletteOpen(true)} />
-        <div className={activeSection === "overview" ? "workspace-grid overview-mode" : "workspace-grid"}>
+        <div
+          className={
+            activeSection === "overview"
+              ? "workspace-grid overview-mode"
+              : selectedEntry && activeSection === "vault"
+                ? "workspace-grid details-open"
+                : "workspace-grid list-only"
+          }
+        >
           <div className="workspace-primary">{mainContent}</div>
-          <EntryDetailsPanel
-            entry={selectedEntry}
-            vault={vault}
-            onEdit={setEditingEntry}
-            onDelete={(entryId) => {
-              if (!window.confirm("Переместить запись в корзину?")) return;
-              moveEntryToTrash(entryId);
-            }}
-            onCreate={createEntry}
-            onCopy={setStatus}
-            onClose={() => setSelectedEntry(null)}
-          />
+          {selectedEntry && activeSection === "vault" && (
+            <EntryDetailsPanel
+              entry={selectedEntry}
+              vault={vault}
+              onEdit={setEditingEntry}
+              onDelete={(entryId) => {
+                if (!window.confirm("Переместить запись в корзину?")) return;
+                moveEntryToTrash(entryId);
+              }}
+              onCreate={createEntry}
+              onCopy={setStatus}
+              onClose={() => setSelectedEntry(null)}
+            />
+          )}
         </div>
       </section>
+      {isNativeMobile && mobileDrag && (
+        <MobileFolderDropTray folders={vault.folders} targetFolderId={mobileDrag.targetFolderId} />
+      )}
       <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
         <button className={activeSection === "vault" ? "active" : ""} onClick={() => selectSection("vault")}><KeyRound size={18} /><span>Хранилище</span></button>
         <button className={activeSection === "favorites" ? "active" : ""} onClick={() => selectSection("favorites")}><Star size={18} /><span>Избранное</span></button>
@@ -2554,33 +3279,33 @@ export default function App() {
 
       {settingsOpen && (
         <>
-          <button className="scrim" aria-label="Закрыть настройки" onClick={() => setSettingsOpen(false)} />
+          <button className="scrim" aria-label="Закрыть настройки по фону" onClick={() => setSettingsOpen(false)} />
           <SettingsPanel
             vault={vault}
             masterPassword={masterPassword}
-            skipLock={skipLock}
             biometricUnlock={biometricUnlock}
-            onSkipLockChange={(enabled) => {
-              setSkipLock(enabled);
-              localStorage.setItem(optionalLockKey, enabled ? "1" : "0");
-              if (enabled) {
-                setBiometricUnlock(false);
-                localStorage.removeItem(biometricUnlockKey);
-                localStorage.setItem(rememberedPasswordKey, masterPassword);
-              } else {
-                if (!biometricUnlock) localStorage.removeItem(rememberedPasswordKey);
-              }
-            }}
             onBiometricUnlockChange={(enabled) => {
               setBiometricUnlock(enabled);
               localStorage.setItem(biometricUnlockKey, enabled ? "1" : "0");
-              if (enabled) {
-                setSkipLock(false);
-                localStorage.setItem(optionalLockKey, "0");
-                localStorage.setItem(rememberedPasswordKey, masterPassword);
-              } else if (!skipLock) {
-                localStorage.removeItem(rememberedPasswordKey);
+            }}
+            onPinChange={async (nextPin) => {
+              await changeDevicePin(masterPassword, nextPin);
+              setStatus("PIN-код изменён");
+              window.setTimeout(() => setStatus(""), 2200);
+            }}
+            onMasterPasswordChange={async (nextMasterPassword, nextVault) => {
+              const cleanVault = withLayeredAuthentication(normalizeVault(nextVault));
+              await saveVault(cleanVault, nextMasterPassword);
+              try {
+                await updateDeviceMasterPassword(nextMasterPassword);
+              } catch (error) {
+                await saveVault(vault, masterPassword);
+                throw error;
               }
+              setVault(cleanVault);
+              setMasterPassword(nextMasterPassword);
+              setStatus("Мастер-пароль изменён");
+              window.setTimeout(() => setStatus(""), 2200);
             }}
             onClose={() => setSettingsOpen(false)}
             onVaultChange={persist}
@@ -2602,13 +3327,11 @@ export default function App() {
               setStatus(`Импортировано: ${nextVault.entries.length}`);
               window.setTimeout(() => setStatus(""), 2200);
             }}
-            onReset={() => {
+            onReset={async () => {
               if (!window.confirm("Удалить локальное хранилище на этом устройстве?")) return;
               destroyVault();
-              localStorage.removeItem(optionalLockKey);
-              localStorage.removeItem(rememberedPasswordKey);
               localStorage.removeItem(biometricUnlockKey);
-              setSkipLock(false);
+              await clearDeviceAuth();
               setBiometricUnlock(false);
               setVault(null);
               setMasterPassword("");
@@ -2619,10 +3342,6 @@ export default function App() {
         </>
       )}
 
-      <div className="theme-corner" aria-hidden="true">
-        <Moon size={14} />
-        {activeEntries(vault.entries).length.toString().padStart(2, "0")}
-      </div>
     </main>
   );
 }

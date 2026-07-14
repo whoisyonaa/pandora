@@ -11,13 +11,16 @@ declare global {
 
 function isPackagedSurface() {
   const userAgent = navigator.userAgent.toLowerCase();
-  if (Boolean(window.Capacitor) && userAgent.includes("android")) {
+  const previewPlatform = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("platform") : null;
+  if (previewPlatform === "android") document.documentElement.classList.add("android-native");
+  if (previewPlatform === "electron") document.documentElement.classList.add("electron-windows");
+  if (userAgent.includes("android")) {
     document.documentElement.classList.add("android-native");
   }
   if (userAgent.includes("electron")) {
     document.documentElement.classList.add("electron-windows");
   }
-  return userAgent.includes("electron") || Boolean(window.Capacitor);
+  return userAgent.includes("electron") || Boolean(window.Capacitor) || previewPlatform === "android" || previewPlatform === "electron";
 }
 
 function BrowserDisabled() {
