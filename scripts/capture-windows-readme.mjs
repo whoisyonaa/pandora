@@ -56,7 +56,7 @@ async function addEntry({ title, username, site, password }) {
   await editor.waitFor();
   await editor.getByLabel("Название").fill(title);
   await editor.getByLabel("Логин").fill(username);
-  await editor.getByLabel("Сайт").fill(site);
+  await editor.getByRole("textbox", { name: "Сайт", exact: true }).fill(site);
   await editor.locator('input[type="password"]').fill(password);
   await editor.getByRole("button", { name: "Сохранить", exact: true }).click();
   await editor.waitFor({ state: "hidden" });
